@@ -1,0 +1,4 @@
+DOCKER_CONTAINER_NAME="maratms-prod1"
+
+docker stop $DOCKER_CONTAINER_NAME
+docker rm $DOCKER_CONTAINER_NAME

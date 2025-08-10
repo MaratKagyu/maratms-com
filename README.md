@@ -18,7 +18,7 @@ Build the frontend image
 docker compose down
  
 # This command deletes previously built front images and builds a new one
-sudo ./bin/docker-build.sh
+./bin/docker-build.sh
 ```
 
 Please make sure you set up `.env` including `CF_TUNNEL_TOKEN` parameter.
@@ -30,7 +30,7 @@ docker compose up
 ## Rolling out updates
 ```bash
 # Build a new image for the front (without deleting the previous ones)
-sudo ./bin/docker-roll-build.sh
+./bin/docker-roll-build.sh
 
 # Restart the front container
 docker compose up -d --no-deps --force-recreate front

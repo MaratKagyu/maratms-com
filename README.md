@@ -14,7 +14,7 @@ npm run build
 Build the frontend image
 ```bash
 # Drop existing containers
-docker compose -f ./.docker/prod/compose.yml --env-file ./.env down
+docker compose down
  
 # This command deletes previously built front images and builds a new one
 ./bin/docker-build.sh
@@ -23,7 +23,7 @@ docker compose -f ./.docker/prod/compose.yml --env-file ./.env down
 Please make sure you set up `.env` including `CF_TUNNEL_TOKEN` parameter.
 ```bash
 # Run with specified paths to compose.yml and .env files
-docker compose -f ./.docker/prod/compose.yml --env-file ./.env up
+docker compose up
 ```
 
 ## Rolling out updates
@@ -32,5 +32,11 @@ docker compose -f ./.docker/prod/compose.yml --env-file ./.env up
 ./bin/docker-roll-build.sh
 
 # Restart the front container
-docker compose -f ./.docker/prod/compose.yml --env-file ./.env up -d --no-deps --force-recreate front
+docker compose up -d --no-deps --force-recreate front
+```
+
+## Accessing containers
+```bash
+# Accessing the Front container
+docker compose exec front sh
 ```

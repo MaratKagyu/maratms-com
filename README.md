@@ -12,6 +12,9 @@ npm run build
 # Run in production
 Build the frontend image
 ```bash
+# Drop existing containers
+docker compose -f ./.docker/prod/compose.yml --env-file ./.env down
+ 
 # This command deletes previously built front images and builds a new one
 ./bin/docker-build.sh
 ```

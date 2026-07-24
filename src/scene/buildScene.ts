@@ -1,8 +1,9 @@
-import { Application, Container, Graphics } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBirch, makeBench } from "./entities";
 import { clamp01, lerp, lerpColor } from "./color";
+import { computeLighting } from "./lighting";
 
 /**
  * The scene is composed in a fixed virtual resolution and then scaled to
@@ -14,6 +15,8 @@ export const WORLD = { width: 1600, height: 900 };
 export type Scene = {
   /** Rescale/recenter the world to cover the given viewport. */
   layout: (screenW: number, screenH: number) => void;
+  /** Advance the scene to the given time of day (hour, 0..24). */
+  update: (timeOfDay: number) => void;
 };
 
 const HORIZON_Y = 380;
@@ -32,26 +35,19 @@ export function buildScene(app: Application, env: Environment): Scene {
   const root = new Container();
   app.stage.addChild(root);
 
-  // --- Sky: banded vertical gradient ---
+  // --- Sky: banded vertical gradient, recoloured by time of day ---
   const sky = new Graphics();
-  const bands = 48;
-  for (let i = 0; i < bands; i++) {
-    const t = i / (bands - 1);
-    sky
-      .rect(0, (HORIZON_Y * i) / bands, W, HORIZON_Y / bands + 1)
-      .fill({ color: lerpColor(p.skyTop, p.skyBottom, t) });
-  }
+  const SKY_BANDS = 48;
+  const drawSky = (top: number, bottom: number) => {
+    sky.clear();
+    for (let i = 0; i < SKY_BANDS; i++) {
+      const t = i / (SKY_BANDS - 1);
+      sky
+        .rect(0, (HORIZON_Y * i) / SKY_BANDS, W, HORIZON_Y / SKY_BANDS + 1)
+        .fill({ color: lerpColor(top, bottom, t) });
+    }
+  };
   root.addChild(sky);
-
-  // --- Sun with soft glow ---
-  const sun = new Graphics();
-  const sx = 1240;
-  const sy = 150;
-  for (let i = 4; i >= 1; i--) {
-    sun.circle(sx, sy, 55 + i * 22).fill({ color: p.sun, alpha: 0.08 });
-  }
-  sun.circle(sx, sy, 55).fill({ color: p.sun });
-  root.addChild(sun);
 
   // --- Sea: from the horizon down to the grass edge ---
   const sea = new Graphics();
@@ -71,7 +67,6 @@ export function buildScene(app: Application, env: Environment): Scene {
   for (let x = 0; x <= W; x += SAMPLE_STEP) gPts.push(x, grassTopY(x));
   gPts.push(W, H);
   grass.poly(gPts).fill({ color: p.grass });
-  // shaded strip along the waterline edge for a bit of relief
   const shade: number[] = [];
   for (let x = 0; x <= W; x += SAMPLE_STEP) shade.push(x, grassTopY(x));
   for (let x = W; x >= 0; x -= SAMPLE_STEP) shade.push(x, grassTopY(x) + 26);
@@ -104,7 +99,6 @@ export function buildScene(app: Application, env: Environment): Scene {
     { x: 1360, y: 800, kind: "birch" },
     { x: 1500, y: 730, kind: "bench" },
   ];
-
   for (const pl of placements) {
     const depth = clamp01((pl.y - 620) / (860 - 620));
     const scale = lerp(0.55, 1.2, depth);
@@ -115,6 +109,68 @@ export function buildScene(app: Application, env: Environment): Scene {
     entities.addChild(node);
   }
 
+  // --- Time-of-day overlays (above the static scene) ---
+
+  // Full-scene tint: darkens at night, warms at golden hour.
+  const grade = new Sprite(Texture.WHITE);
+  grade.width = W;
+  grade.height = H;
+  grade.tint = 0x000000;
+  grade.alpha = 0;
+  root.addChild(grade);
+
+  // Stars: fixed field, faded in/out via the layer alpha.
+  const stars = new Graphics();
+  for (let i = 0; i < 90; i++) {
+    const x = (i * 137.5) % W;
+    const y = ((i * 89.3) % (HORIZON_Y - 40)) + 12;
+    const r = 0.8 + (i % 3) * 0.5;
+    stars.circle(x, y, r).fill({ color: 0xffffff, alpha: 0.6 + (i % 4) * 0.1 });
+  }
+  stars.alpha = 0;
+  root.addChild(stars);
+
+  // Sun / moon: a single object, redrawn when the kind or colour changes.
+  const celestial = new Graphics();
+  root.addChild(celestial);
+
+  const drawCelestial = (kind: "sun" | "moon", color: number) => {
+    celestial.clear();
+    if (kind === "sun") {
+      for (let i = 4; i >= 1; i--) {
+        celestial.circle(0, 0, 55 + i * 22).fill({ color, alpha: 0.08 });
+      }
+      celestial.circle(0, 0, 55).fill({ color });
+    } else {
+      celestial.circle(0, 0, 52).fill({ color: 0xdfe6ff, alpha: 0.2 });
+      celestial.circle(0, 0, 40).fill({ color });
+      celestial.circle(-12, -8, 7).fill({ color: 0x000000, alpha: 0.05 });
+      celestial.circle(11, 10, 5).fill({ color: 0x000000, alpha: 0.05 });
+    }
+  };
+
+  // Redraw the time-driven graphics only when the ~3-minute bucket changes.
+  let lastBucket = Number.NaN;
+  let lastKind: "sun" | "moon" | "" = "";
+
+  function update(timeOfDay: number) {
+    const L = computeLighting(timeOfDay, W, HORIZON_Y);
+
+    const bucket = Math.round(timeOfDay * 20);
+    if (bucket !== lastBucket || L.celestial !== lastKind) {
+      lastBucket = bucket;
+      lastKind = L.celestial;
+      drawSky(L.skyTop, L.skyBottom);
+      drawCelestial(L.celestial, L.celestialColor);
+    }
+
+    celestial.x = L.celestialX;
+    celestial.y = L.celestialY;
+    grade.tint = L.gradeColor;
+    grade.alpha = L.gradeAlpha;
+    stars.alpha = L.starAlpha;
+  }
+
   function layout(screenW: number, screenH: number) {
     const scale = Math.max(screenW / W, screenH / H);
     root.scale.set(scale);
@@ -122,5 +178,5 @@ export function buildScene(app: Application, env: Environment): Scene {
     root.y = (screenH - H * scale) / 2;
   }
 
-  return { layout };
+  return { layout, update };
 }

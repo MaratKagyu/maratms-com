@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Application } from "pixi.js";
 import { buildScene } from "./scene/buildScene";
 import { createEnvironment } from "./scene/environment";
+import { createClock } from "./scene/clock";
 import styles from "./ShoreScene.module.css";
 
 export default function ShoreScene() {
@@ -35,9 +36,16 @@ export default function ShoreScene() {
       host.appendChild(instance.canvas);
 
       const scene = buildScene(instance, createEnvironment());
+      const clock = createClock();
+
       const onResize = () => scene.layout(host.clientWidth, host.clientHeight);
       window.addEventListener("resize", onResize);
       onResize();
+
+      const tick = () => scene.update(clock.now());
+      tick();
+      instance.ticker.add(tick);
+
       detach = () => window.removeEventListener("resize", onResize);
     })();
 

@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBirch, makeBench } from "./entities";
+import { createAgents } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
 
@@ -15,8 +16,8 @@ export const WORLD = { width: 1600, height: 900 };
 export type Scene = {
   /** Rescale/recenter the world to cover the given viewport. */
   layout: (screenW: number, screenH: number) => void;
-  /** Advance the scene to the given time of day (hour, 0..24). */
-  update: (timeOfDay: number) => void;
+  /** Advance the scene: set time of day (hour, 0..24) and step agents by dtMs. */
+  update: (timeOfDay: number, dtMs: number) => void;
 };
 
 const HORIZON_Y = 380;
@@ -60,6 +61,10 @@ export function buildScene(app: Application, env: Environment): Scene {
     sea.rect(0, ry, W, 3).fill({ color: p.seaRipple, alpha: 0.25 - i * 0.02 });
   }
   root.addChild(sea);
+
+  // Water life (ducks) lives above the sea but below the grassy foreground.
+  const waterLife = new Container();
+  root.addChild(waterLife);
 
   // --- Grass slope ---
   const grass = new Graphics();
@@ -109,6 +114,9 @@ export function buildScene(app: Application, env: Environment): Scene {
     entities.addChild(node);
   }
 
+  // --- Living agents: people & dogs on the path, ducks on the water ---
+  const agents = createAgents(entities, waterLife, pathY, W);
+
   // --- Time-of-day overlays (above the static scene) ---
 
   // Full-scene tint: darkens at night, warms at golden hour.
@@ -153,7 +161,9 @@ export function buildScene(app: Application, env: Environment): Scene {
   let lastBucket = Number.NaN;
   let lastKind: "sun" | "moon" | "" = "";
 
-  function update(timeOfDay: number) {
+  function update(timeOfDay: number, dtMs: number) {
+    agents.update(dtMs);
+
     const L = computeLighting(timeOfDay, W, HORIZON_Y);
 
     const bucket = Math.round(timeOfDay * 20);

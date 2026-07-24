@@ -16,6 +16,32 @@ npm run preview
 ```
 
 
+# Home page scene (Pixi)
+
+The home page renders a live side-elevation shore scene (`src/scene/`). By
+default it follows the real local **time of day**, **date/season** and a
+procedural, season-biased **weather**. These URL query parameters override that
+for development and preview — combine them freely:
+
+| Parameter | Values | Effect |
+|-----------|--------|--------|
+| `hour`    | `0`–`24` (e.g. `20`, `6.5`) | Freeze the time of day. Drives sky colour, sun/moon arc and stars. |
+| `speed`   | number (e.g. `600`, `800`) | Run the time of day N× faster from load instead of real time (a full day in ~`86400/speed` s). Ignored when `hour` is set. |
+| `month`   | `0`–`12` (e.g. `1`=Feb, `9.7`=mid-Oct) | Freeze the season. Drives foliage, ground colour, snow cover and day length. |
+| `weather` | `clear`, `cloudy`, `rain`, `snow`, `fog` | Force the weather condition. |
+| `wind`    | `-1`–`1` (e.g. `0.6`, `-0.4`) | Force wind direction/strength (sways trees, slants precipitation, drifts clouds). |
+
+Examples:
+```
+/?hour=13                     # midday
+/?hour=22&month=1             # winter night
+/?month=9.7                   # golden autumn
+/?weather=rain&wind=0.6       # rain driven by wind
+/?month=1&weather=snow&hour=20  # snowy winter evening
+/?speed=800                   # fast day/night cycle with evolving weather
+```
+
+
 # Run in production
 ## Initial run
 _**IMPORTANT**_. If you're running this under linux, you'll have to run all these commands as root (sudo won't work)

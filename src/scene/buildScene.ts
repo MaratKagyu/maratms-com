@@ -6,6 +6,7 @@ import { createAgents } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
 import { computeSeason, type SeasonState } from "./season";
+import { createWeather, createWeatherView } from "./weather";
 
 /**
  * The scene is composed in a fixed virtual resolution and then scaled to
@@ -113,6 +114,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     { x: 1500, y: 730, kind: "bench" },
   ];
   const birchSetters: ((s: SeasonState) => void)[] = [];
+  const birchViews: Container[] = [];
   for (const pl of placements) {
     const depth = clamp01((pl.y - 620) / (860 - 620));
     const scale = lerp(0.55, 1.2, depth);
@@ -120,6 +122,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     if (pl.kind === "birch") {
       const birch = makeBirch(p, scale);
       birchSetters.push(birch.setSeason);
+      birchViews.push(birch.view);
       node = birch.view;
     } else {
       node = makeBench(p, scale);
@@ -173,8 +176,25 @@ export function buildScene(app: Application, env: Environment): Scene {
     }
   };
 
+  // Explicit layer order so weather can interleave (clouds behind the grade,
+  // precipitation above the land, celestial + fog + stars on top).
+  root.sortableChildren = true;
+  sky.zIndex = 0;
+  sea.zIndex = 30;
+  waterLife.zIndex = 35;
+  grass.zIndex = 40;
+  path.zIndex = 45;
+  entities.zIndex = 50;
+  grade.zIndex = 70;
+  celestial.zIndex = 72; // above the grade so sun/moon stay bright at night
+  stars.zIndex = 80;
+
+  const weather = createWeather();
+  const weatherView = createWeatherView(root, W, H);
+
   // Draw the initial season so the ground and canopies exist from frame 0.
   let daylight = 0;
+  let windT = 0;
   {
     const s = computeSeason(5);
     daylight = s.daylight;
@@ -190,6 +210,15 @@ export function buildScene(app: Application, env: Environment): Scene {
 
   function update(timeOfDay: number, month: number, dtMs: number) {
     agents.update(dtMs);
+
+    const w = weather.sample(month, dtMs);
+    weatherView.update(w, dtMs);
+
+    // Wind sways the birch canopies.
+    windT += dtMs / 1000;
+    for (let i = 0; i < birchViews.length; i++) {
+      birchViews[i].rotation = w.wind * Math.sin(windT * 1.6 + i) * 0.05;
+    }
 
     const seasonBucket = Math.round(month * 8);
     if (seasonBucket !== lastSeasonBucket) {
@@ -214,7 +243,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     celestial.y = L.celestialY;
     grade.tint = L.gradeColor;
     grade.alpha = L.gradeAlpha;
-    stars.alpha = L.starAlpha;
+    stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
   }
 
   function layout(screenW: number, screenH: number) {

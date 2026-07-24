@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.idea
+.next
+.env
+.env.*
+!.env.dist
+*.log
+.DS_Store

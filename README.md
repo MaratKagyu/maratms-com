@@ -1,11 +1,18 @@
+A personal site built as a plain **React 19 + Vite + TypeScript** single-page app.
+`npm run build` produces a static bundle in `dist/` — no SSR, no Node.js runtime.
+In production the static files are served by **nginx** (listening on port `3000`)
+behind a Cloudflare tunnel.
 
-# Dev commands 
+# Dev commands
 ```bash
-# Run the project in dev mode with auto-update
+# Run the project in dev mode with hot reload (http://localhost:5173)
 npm run dev
 
-# Build the project
+# Build the static bundle into dist/
 npm run build
+
+# Preview the production build locally
+npm run preview
 ```
 
 

@@ -1,35 +1,48 @@
-export type Clock = { now: () => number };
+export type Clock = {
+  /** Hour of day, 0..24. */
+  hour: () => number;
+  /** Continuous month, 0 (Jan) .. 12 (wraps). */
+  month: () => number;
+};
 
-/** Local wall-clock time as a continuous hour in [0, 24). */
 function realHour(): number {
   const d = new Date();
   return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
 }
 
+function realMonth(): number {
+  const d = new Date();
+  return d.getMonth() + (d.getDate() - 1) / 30.4;
+}
+
 /**
- * Drives the scene's time of day. Defaults to the real local clock (the chosen
- * "real time" model). Dev/preview overrides via URL query:
- *   ?hour=20     freeze the scene at 20:00
- *   ?speed=600   run time 600x faster from load (a day in ~2.4 min)
+ * Drives the scene's time of day and season. Defaults to the real local
+ * clock/date (the chosen "real time" model). Dev/preview overrides via URL:
+ *   ?hour=20     freeze time of day at 20:00
+ *   ?speed=600   run time of day 600x faster from load
+ *   ?month=9.7   freeze the season at mid-October (0 = Jan)
  */
 export function createClock(): Clock {
   const params = new URLSearchParams(window.location.search);
 
   const hourParam = params.get("hour");
-  if (hourParam !== null) {
-    const h = ((Number(hourParam) % 24) + 24) % 24;
-    return { now: () => h };
-  }
-
+  const fixedHour = hourParam !== null ? ((Number(hourParam) % 24) + 24) % 24 : null;
   const speed = Number(params.get("speed")) || 1;
-  if (speed === 1) return { now: realHour };
+
+  const monthParam = params.get("month");
+  const fixedMonth = monthParam !== null ? ((Number(monthParam) % 12) + 12) % 12 : null;
 
   const start = performance.now();
-  const base = realHour();
-  return {
-    now: () => {
-      const elapsedH = ((performance.now() - start) / 3_600_000) * speed;
-      return (((base + elapsedH) % 24) + 24) % 24;
-    },
+  const baseHour = realHour();
+
+  const hour = () => {
+    if (fixedHour !== null) return fixedHour;
+    if (speed === 1) return realHour();
+    const elapsedH = ((performance.now() - start) / 3_600_000) * speed;
+    return (((baseHour + elapsedH) % 24) + 24) % 24;
   };
+
+  const month = () => (fixedMonth !== null ? fixedMonth : realMonth());
+
+  return { hour, month };
 }

@@ -5,6 +5,7 @@ import { makeBirch, makeBench } from "./entities";
 import { createAgents } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
+import { computeSeason, type SeasonState } from "./season";
 
 /**
  * The scene is composed in a fixed virtual resolution and then scaled to
@@ -16,8 +17,11 @@ export const WORLD = { width: 1600, height: 900 };
 export type Scene = {
   /** Rescale/recenter the world to cover the given viewport. */
   layout: (screenW: number, screenH: number) => void;
-  /** Advance the scene: set time of day (hour, 0..24) and step agents by dtMs. */
-  update: (timeOfDay: number, dtMs: number) => void;
+  /**
+   * Advance the scene: set time of day (hour, 0..24) and season (month, 0..12),
+   * and step agents by dtMs.
+   */
+  update: (timeOfDay: number, month: number, dtMs: number) => void;
 };
 
 const HORIZON_Y = 380;
@@ -66,16 +70,20 @@ export function buildScene(app: Application, env: Environment): Scene {
   const waterLife = new Container();
   root.addChild(waterLife);
 
-  // --- Grass slope ---
+  // --- Grass slope (recoloured + snowed by season) ---
   const grass = new Graphics();
   const gPts: number[] = [0, H];
   for (let x = 0; x <= W; x += SAMPLE_STEP) gPts.push(x, grassTopY(x));
   gPts.push(W, H);
-  grass.poly(gPts).fill({ color: p.grass });
   const shade: number[] = [];
   for (let x = 0; x <= W; x += SAMPLE_STEP) shade.push(x, grassTopY(x));
   for (let x = W; x >= 0; x -= SAMPLE_STEP) shade.push(x, grassTopY(x) + 26);
-  grass.poly(shade).fill({ color: p.grassShade, alpha: 0.5 });
+  const drawGround = (s: SeasonState) => {
+    grass.clear();
+    grass.poly(gPts).fill({ color: s.grass });
+    grass.poly(shade).fill({ color: s.grassShade, alpha: 0.5 });
+    if (s.snow > 0.01) grass.poly(gPts).fill({ color: 0xffffff, alpha: s.snow * 0.85 });
+  };
   root.addChild(grass);
 
   // --- Path ribbon along the slope ---
@@ -104,10 +112,18 @@ export function buildScene(app: Application, env: Environment): Scene {
     { x: 1360, y: 800, kind: "birch" },
     { x: 1500, y: 730, kind: "bench" },
   ];
+  const birchSetters: ((s: SeasonState) => void)[] = [];
   for (const pl of placements) {
     const depth = clamp01((pl.y - 620) / (860 - 620));
     const scale = lerp(0.55, 1.2, depth);
-    const node = pl.kind === "birch" ? makeBirch(p, scale) : makeBench(p, scale);
+    let node;
+    if (pl.kind === "birch") {
+      const birch = makeBirch(p, scale);
+      birchSetters.push(birch.setSeason);
+      node = birch.view;
+    } else {
+      node = makeBench(p, scale);
+    }
     node.x = pl.x;
     node.y = pl.y;
     node.zIndex = pl.y; // nearer (lower on screen) draws on top
@@ -157,14 +173,34 @@ export function buildScene(app: Application, env: Environment): Scene {
     }
   };
 
-  // Redraw the time-driven graphics only when the ~3-minute bucket changes.
+  // Draw the initial season so the ground and canopies exist from frame 0.
+  let daylight = 0;
+  {
+    const s = computeSeason(5);
+    daylight = s.daylight;
+    drawGround(s);
+    for (const set of birchSetters) set(s);
+  }
+
+  // Redraw the time-driven graphics only when the ~3-minute bucket changes;
+  // the season graphics only when the month bucket changes.
   let lastBucket = Number.NaN;
   let lastKind: "sun" | "moon" | "" = "";
+  let lastSeasonBucket = Number.NaN;
 
-  function update(timeOfDay: number, dtMs: number) {
+  function update(timeOfDay: number, month: number, dtMs: number) {
     agents.update(dtMs);
 
-    const L = computeLighting(timeOfDay, W, HORIZON_Y);
+    const seasonBucket = Math.round(month * 8);
+    if (seasonBucket !== lastSeasonBucket) {
+      lastSeasonBucket = seasonBucket;
+      const s = computeSeason(month);
+      daylight = s.daylight;
+      drawGround(s);
+      for (const set of birchSetters) set(s);
+    }
+
+    const L = computeLighting(timeOfDay, W, HORIZON_Y, daylight);
 
     const bucket = Math.round(timeOfDay * 20);
     if (bucket !== lastBucket || L.celestial !== lastKind) {

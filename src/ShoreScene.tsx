@@ -42,8 +42,10 @@ export default function ShoreScene() {
       window.addEventListener("resize", onResize);
       onResize();
 
-      scene.update(clock.now(), 0);
-      instance.ticker.add((ticker) => scene.update(clock.now(), ticker.deltaMS));
+      scene.update(clock.hour(), clock.month(), 0);
+      instance.ticker.add((ticker) =>
+        scene.update(clock.hour(), clock.month(), ticker.deltaMS),
+      );
 
       detach = () => window.removeEventListener("resize", onResize);
     })();

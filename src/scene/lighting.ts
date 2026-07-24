@@ -56,22 +56,31 @@ function interpStops(t: number) {
   };
 }
 
-const SUN_UP = 6.3;
-const SUN_DOWN = 19.7;
-
-export function computeLighting(t: number, worldW: number, horizonY: number): Lighting {
+/**
+ * @param daylight -1..1 seasonal day length (winter shortens, summer lengthens).
+ */
+export function computeLighting(
+  t: number,
+  worldW: number,
+  horizonY: number,
+  daylight = 0,
+): Lighting {
   const s = interpStops(t);
+
+  // Longer days in summer, shorter in winter.
+  const sunUp = 6.3 - daylight * 1.5;
+  const sunDown = 19.7 + daylight * 1.5;
 
   // Sun during the day, moon otherwise; both arc left -> right across the sky.
   let celestial: "sun" | "moon";
   let frac: number;
-  if (t >= SUN_UP && t <= SUN_DOWN) {
+  if (t >= sunUp && t <= sunDown) {
     celestial = "sun";
-    frac = (t - SUN_UP) / (SUN_DOWN - SUN_UP);
+    frac = (t - sunUp) / (sunDown - sunUp);
   } else {
     celestial = "moon";
-    const nt = t < SUN_UP ? t + 24 : t;
-    frac = (nt - SUN_DOWN) / (24 + SUN_UP - SUN_DOWN);
+    const nt = t < sunUp ? t + 24 : t;
+    frac = (nt - sunDown) / (24 + sunUp - sunDown);
   }
 
   const elevation = Math.sin(frac * Math.PI); // 0 at horizon, 1 at peak

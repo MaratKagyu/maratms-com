@@ -3,6 +3,7 @@ import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBench } from "./entities";
 import { createGroundDetail } from "./ground";
+import { makeBush, makeLamp, makeRock, makeStump, type Lamp, type SeasonalProp } from "./props";
 import { createMeteors } from "./meteors";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
 import { createAgents, type BenchSpot } from "./agents";
@@ -149,6 +150,55 @@ export function buildScene(app: Application, env: Environment): Scene {
   const leafFall = createLeafFall(leafSpots);
   root.addChild(leafFall.view);
 
+  // --- Stationary props: bushes, lamps, boulders, a stump ---
+  const propDefs: { x: number; y: number; kind: "bush" | "bushF" | "rock" | "stump" | "lamp" }[] = [
+    { x: 118, y: 712, kind: "bush" },
+    { x: 290, y: 668, kind: "bushF" },
+    { x: 475, y: 708, kind: "bush" },
+    { x: 660, y: 852, kind: "bushF" },
+    { x: 855, y: 652, kind: "bush" },
+    { x: 1115, y: 648, kind: "bush" },
+    { x: 1270, y: 832, kind: "bush" },
+    { x: 1545, y: 645, kind: "bush" },
+    { x: 135, y: 640, kind: "rock" },
+    { x: 1012, y: 622, kind: "rock" },
+    { x: 1488, y: 878, kind: "rock" },
+    { x: 398, y: 872, kind: "stump" },
+    { x: 250, y: 755, kind: "lamp" },
+    { x: 610, y: 739, kind: "lamp" },
+    { x: 990, y: 731, kind: "lamp" },
+    { x: 1420, y: 767, kind: "lamp" },
+  ];
+  const seasonalProps: SeasonalProp[] = [];
+  const lamps: Lamp[] = [];
+  const lampGlow = new Container(); // halos punch through the night grade
+  propDefs.forEach((pd, i) => {
+    const depth = clamp01((pd.y - 620) / (860 - 620));
+    const scale = lerp(0.55, 1.2, depth);
+    let node: Container;
+    if (pd.kind === "lamp") {
+      const lamp = makeLamp(scale);
+      lamps.push(lamp);
+      lamp.glow.position.set(pd.x, pd.y);
+      lampGlow.addChild(lamp.glow);
+      node = lamp.view;
+    } else {
+      const prop =
+        pd.kind === "rock"
+          ? makeRock(i * 97 + 13, scale)
+          : pd.kind === "stump"
+            ? makeStump(i * 97 + 13, scale)
+            : makeBush(i * 97 + 13, scale, pd.kind === "bushF");
+      seasonalProps.push(prop);
+      node = prop.view;
+    }
+    node.x = pd.x;
+    node.y = pd.y;
+    node.zIndex = pd.y;
+    entities.addChild(node);
+  });
+  root.addChild(lampGlow);
+
   // --- Living agents: people & dogs on the path, ducks on the water ---
   const agents = createAgents(entities, waterLife, pathY, W, benchSpots);
 
@@ -158,7 +208,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     W,
     grassTopY,
     pathY,
-    placements.map(({ x, y }) => ({ x, y })),
+    [...placements, ...propDefs].map(({ x, y }) => ({ x, y })),
   );
 
   // --- Time-of-day overlays (above the static scene) ---
@@ -278,6 +328,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   path.zIndex = 45;
   entities.zIndex = 50;
   grade.zIndex = 70;
+  lampGlow.zIndex = 71; // lamp light is not dimmed by the night grade
   celestial.zIndex = 72; // above the grade so sun/moon stay bright at night
   stars.zIndex = 80;
 
@@ -293,6 +344,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     drawGround(s);
     groundDetail.setSeason(s, 5);
     for (const tree of trees) tree.setSeason(s, 5);
+    for (const prop of seasonalProps) prop.setSeason(s, 5);
   }
 
   // Redraw the time-driven graphics only when the ~3-minute bucket changes;
@@ -322,6 +374,7 @@ export function buildScene(app: Application, env: Environment): Scene {
       drawGround(s);
       groundDetail.setSeason(s, month);
       for (const tree of trees) tree.setSeason(s, month);
+      for (const prop of seasonalProps) prop.setSeason(s, month);
     }
 
     const L = computeLighting(timeOfDay, W, HORIZON_Y, daylight);
@@ -344,6 +397,9 @@ export function buildScene(app: Application, env: Environment): Scene {
     const total = L.gradeAlpha + cloudDim;
     grade.tint = total > 0 ? lerpColor(L.gradeColor, 0x404a58, cloudDim / total) : L.gradeColor;
     grade.alpha = total;
+    // Park lamps come on through dusk and burn all night.
+    const lampK = clamp01(L.starAlpha * 1.7);
+    for (const lamp of lamps) lamp.setNight(lampK);
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
     meteors.update(dtMs, L.starAlpha, w.cloud);
     if (stars.alpha > 0.01) {

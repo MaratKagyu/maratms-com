@@ -20,8 +20,11 @@ npm run preview
 
 The home page renders a live side-elevation shore scene (`src/scene/`). By
 default it follows the real local **time of day**, **date/season** and a
-procedural, season-biased **weather**. These URL query parameters override that
-for development and preview — combine them freely:
+procedural, season-biased **weather**. The park is populated by procedural
+characters (adults, kids, elders with canes, joggers, dogs on leashes) that
+enter and leave, pause, sit on benches and raise umbrellas in rain; their
+number follows the hour, weather and season. These URL query parameters
+override the simulation for development and preview — combine them freely:
 
 | Parameter | Values | Effect |
 |-----------|--------|--------|
@@ -39,6 +42,21 @@ Examples:
 /?weather=rain&wind=0.6       # rain driven by wind
 /?month=1&weather=snow&hour=20  # snowy winter evening
 /?speed=800                   # fast day/night cycle with evolving weather
+```
+
+## Character gallery
+
+`/?gallery=1` renders a zoomed lineup of the procedural characters on a
+neutral background instead of the scene — useful when tweaking figures. The
+first four are always adult / kid / elder / jogger, the rest random. Extra
+parameters: `n` (figure count, default 8 — fewer means larger), `seed`
+(reroll outfits), `month` (dress for a season), `pace` 0..1, `phase` (freeze
+the walk cycle), `pose=stand|sit`, `umbrella=1`, `zoom`.
+
+```
+/?gallery=1&n=4&month=0         # winter outfits, close up
+/?gallery=1&pose=sit            # bench-sitting pose
+/?gallery=1&umbrella=1&seed=5   # umbrellas up, rerolled looks
 ```
 
 

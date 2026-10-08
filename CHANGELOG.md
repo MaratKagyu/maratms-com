@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-10-08 — NPC graphics & behavior overhaul
+
+Rebuilt the home-page scene's inhabitants from scratch, keeping the flat-vector
+no-asset approach (everything is still drawn from Pixi primitives in code).
+
+### Added
+- Skeletal character rig: two-segment legs and arms (knees, elbows, feet,
+  hands), far-side limb shading, forward lean, per-step bob; walking, idle
+  standing and bench-sitting poses.
+- Seeded character generator: archetypes (adult, kid, elder with cane,
+  jogger), hair styles, seasonal outfits (t-shirts to winter coats, caps and
+  beanies chosen by month), bags, kids' backpacks, five skin tones.
+- NPC behavior: walkers enter/leave at the scene edges, pause, sit on benches,
+  walk dogs on sagging leashes, raise umbrellas in rain; population density
+  follows the time of day, weather and season (empty park at night).
+- Dog variety: fur colours, floppy/pointy ears, tail poses, belly patches.
+- Soft contact shadows under walkers; cloud cover dims the whole scene; ducks
+  fly off for the deepest winter weeks.
+- Dev character gallery at `/?gallery=1` (see README).
+
+### Changed
+- Forced `?weather=X` now starts fully developed instead of fading in.
+
 ## 2026-07-24 — Migrated from Next.js to React + Vite
 
 Replaced the Next.js stack with a plain React single-page app to avoid the

@@ -243,8 +243,11 @@ export function buildScene(app: Application, env: Environment): Scene {
 
     celestial.x = L.celestialX;
     celestial.y = L.celestialY;
-    grade.tint = L.gradeColor;
-    grade.alpha = L.gradeAlpha;
+    // Heavy cloud cover dims and cools the whole scene a little.
+    const cloudDim = w.cloud * 0.14;
+    const total = L.gradeAlpha + cloudDim;
+    grade.tint = total > 0 ? lerpColor(L.gradeColor, 0x404a58, cloudDim / total) : L.gradeColor;
+    grade.alpha = total;
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
   }
 

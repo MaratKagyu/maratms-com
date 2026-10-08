@@ -119,11 +119,21 @@ type NpcState = "walk" | "pause" | "toSeat" | "sit" | "leave";
 type Dog = {
   view: Container;
   animate: (phase: number) => void;
+  shadow: Graphics;
   x: number;
   dir: 1 | -1;
   phase: number;
   baseScale: number;
 };
+
+/** Soft contact shadow, inserted under a figure's feet. */
+function addShadow(view: Container, rx: number): Graphics {
+  const g = new Graphics();
+  g.ellipse(0, 1, rx, rx * 0.26).fill({ color: 0x1c2430 });
+  g.alpha = 0.18;
+  view.addChildAt(g, 0);
+  return g;
+}
 
 type Npc = {
   person: Person;
@@ -145,6 +155,7 @@ type Npc = {
   nearSeat: Seat | null;
   dog: Dog | null;
   leash: Graphics | null;
+  shadow: Graphics;
 };
 
 const depthScale = (y: number) => lerp(0.82, 1.08, clamp01((y - 720) / (840 - 720)));
@@ -218,6 +229,7 @@ export function createAgents(
       nearSeat: null,
       dog: null,
       leash: null,
+      shadow: addShadow(person.view, look.height * 0.2),
     };
 
     const freeSeat = seats.find((s) => !s.taken);
@@ -242,6 +254,7 @@ export function createAgents(
       npc.dog = {
         view: d.root,
         animate: d.animate,
+        shadow: addShadow(d.root, 15),
         x: npc.x - npc.dir * 34,
         dir: npc.dir,
         phase: rng() * 6.28,
@@ -417,6 +430,11 @@ export function createAgents(
     // Drop the seat blend once we are clear of the bench.
     if (npc.nearSeat && !npc.seat && Math.abs(npc.x - npc.nearSeat.x) > 70) npc.nearSeat = null;
 
+    // Shadows fade as cloud cover diffuses the light.
+    npc.shadow.alpha = 0.2 - 0.13 * ctx.weather.cloud;
+    npc.shadow.visible = npc.state !== "sit";
+    if (npc.dog) npc.dog.shadow.alpha = npc.shadow.alpha;
+
     const view = npc.person.view;
     if (npc.state === "sit") {
       const seat = npc.seat!;
@@ -485,7 +503,13 @@ export function createAgents(
     }
 
     for (let i = npcs.length - 1; i >= 0; i--) stepNpc(npcs[i], dt, ctx);
-    for (const d of ducks) d.update(dtMs);
+
+    // Ducks fly off for the deepest winter weeks.
+    const ducksHome = coldness(ctx.month) < 0.85;
+    for (const d of ducks) {
+      d.view.visible = ducksHome;
+      if (ducksHome) d.update(dtMs);
+    }
   };
 
   return { update };

@@ -48,7 +48,7 @@ export type Person = {
   stand: (t: number, umbrella?: boolean) => void;
   /** Sitting pose (hips level with the origin minus leg length — place the
    *  figure so its hips land on the seat; the feet dangle). */
-  sit: (t: number) => void;
+  sit: (t: number, umbrella?: boolean) => void;
 };
 
 const SKIN = [0xf2cfae, 0xf0c8a0, 0xe0aa80, 0xb98354, 0x8d5a33];
@@ -421,7 +421,7 @@ export function buildPerson(look: PersonLook): Person {
     setUmbrella(withUmbrella, t);
   };
 
-  const sit = (t: number) => {
+  const sit = (t: number, withUmbrella = false) => {
     const poseLeg = (L: Leg, off: number) => {
       L.hip.rotation = -1.52 + off;
       L.knee.rotation = 1.42;
@@ -429,16 +429,18 @@ export function buildPerson(look: PersonLook): Person {
     };
     poseLeg(legFar, -0.05);
     poseLeg(legNear, 0.06);
-    // Hands rest on the lap.
+    // Hands rest on the lap (the near one may hold the umbrella).
     armFar.shoulder.rotation = -0.5;
     armFar.elbow.rotation = -0.75;
-    armNear.shoulder.rotation = -0.5;
-    armNear.elbow.rotation = -0.75;
+    if (!withUmbrella) {
+      armNear.shoulder.rotation = -0.5;
+      armNear.elbow.rotation = -0.75;
+    }
     body.y = hipY - 0.2 - Math.sin(t * 1.6) * 0.3;
     body.rotation = elder ? 0.1 : 0.02;
     head.rotation = -body.rotation * 0.4 + (elder ? 0.05 : 0);
     if (cane) cane.visible = false; // would float mid-air while seated
-    umbrella.visible = false;
+    setUmbrella(withUmbrella, t);
   };
 
   animate(0, 0);

@@ -6,6 +6,7 @@ import { createAgents, type BenchSpot } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
 import { computeSeason, type SeasonState } from "./season";
+import { createWater } from "./water";
 import { createWeather, createWeatherView } from "./weather";
 
 /**
@@ -55,17 +56,8 @@ export function buildScene(app: Application, env: Environment): Scene {
   };
   root.addChild(sky);
 
-  // --- Sea: from the horizon down to the grass edge ---
-  const sea = new Graphics();
-  const seaPts: number[] = [0, HORIZON_Y];
-  for (let x = 0; x <= W; x += SAMPLE_STEP) seaPts.push(x, grassTopY(x));
-  seaPts.push(W, HORIZON_Y);
-  sea.poly(seaPts).fill({ color: p.sea });
-  for (let i = 0; i < 6; i++) {
-    const ry = HORIZON_Y + 24 + i * 22;
-    sea.rect(0, ry, W, 3).fill({ color: p.seaRipple, alpha: 0.25 - i * 0.02 });
-  }
-  root.addChild(sea);
+  // --- Sea: living water (see water.ts), from the horizon to the grass edge ---
+  const water = createWater(root, W, HORIZON_Y, grassTopY);
 
   // Water life (ducks) lives above the sea but below the grassy foreground.
   const waterLife = new Container();
@@ -182,7 +174,6 @@ export function buildScene(app: Application, env: Environment): Scene {
   // precipitation above the land, celestial + fog + stars on top).
   root.sortableChildren = true;
   sky.zIndex = 0;
-  sea.zIndex = 30;
   waterLife.zIndex = 35;
   grass.zIndex = 40;
   path.zIndex = 45;
@@ -232,6 +223,8 @@ export function buildScene(app: Application, env: Environment): Scene {
     }
 
     const L = computeLighting(timeOfDay, W, HORIZON_Y, daylight);
+
+    water.update(dtMs, L, w);
 
     const bucket = Math.round(timeOfDay * 20);
     if (bucket !== lastBucket || L.celestial !== lastKind) {

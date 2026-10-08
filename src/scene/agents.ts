@@ -444,7 +444,7 @@ export function createAgents(
       view.y = seatY + npc.person.look.height * 0.47 * sc;
       view.zIndex = seat.groundY + 1;
       view.scale.set(npc.dir * sc, sc);
-      npc.person.sit(npc.idleT);
+      npc.person.sit(npc.idleT, npc.umbrella);
       return;
     }
 

@@ -36,6 +36,11 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   the twig tips; conifers stay green and collect snow per tier. Soft ground
   shadows under trees and benches, autumn leaf carpets, and leaves drifting
   down from the canopies on the wind. Wind now sways crowns, not trunks.
+- Shooting stars (`src/scene/meteors.ts`): frequent and detailed at night —
+  glowing head with a halo, tapering trail, embers burning out behind, rare
+  bolides with a terminal flash and a lingering afterglow; by day only an
+  occasional faint pale streak. Clouds suppress them. `?meteors=N`
+  multiplies the frequency for a meteor-shower preview.
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

@@ -33,6 +33,12 @@ const SCENE_PARAMS: Row[] = [
     effect:
       "Force wind direction/strength: sways trees, drifts clouds, slants rain, drives the waves.",
   },
+  {
+    name: "meteors",
+    values: "number, e.g. 20",
+    effect:
+      "Multiply the shooting-star frequency (they are rare by default, mostly at night). Big values make a meteor shower.",
+  },
 ];
 
 const GALLERY_PARAMS: Row[] = [
@@ -55,6 +61,7 @@ const SCENE_EXAMPLES: [string, string][] = [
   ["/?weather=rain&wind=0.6", "wind-driven rain, umbrellas up"],
   ["/?month=1&weather=snow&hour=20", "snowy winter evening"],
   ["/?speed=800", "fast day/night cycle with evolving weather"],
+  ["/?hour=23.5&meteors=20", "a meteor shower over the moonlit sea"],
 ];
 
 const GALLERY_EXAMPLES: [string, string][] = [

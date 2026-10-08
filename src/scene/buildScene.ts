@@ -3,6 +3,7 @@ import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBench } from "./entities";
 import { createGroundDetail } from "./ground";
+import { createMeteors } from "./meteors";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
 import { createAgents, type BenchSpot } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
@@ -177,6 +178,10 @@ export function buildScene(app: Application, env: Environment): Scene {
   stars.alpha = 0;
   root.addChild(stars);
 
+  // Shooting stars above everything in the sky.
+  const meteors = createMeteors(W, HORIZON_Y);
+  root.addChild(meteors.view);
+
   // Sun / moon: a single object, redrawn when the kind or colour changes.
   // Masked to the sky so a low sun (and its glow) sinks behind the horizon
   // instead of overlapping the water — the reflection path takes over there.
@@ -275,6 +280,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     grade.tint = total > 0 ? lerpColor(L.gradeColor, 0x404a58, cloudDim / total) : L.gradeColor;
     grade.alpha = total;
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
+    meteors.update(dtMs, L.starAlpha, w.cloud);
     if (stars.alpha > 0.01) {
       starsTwinkle.clear();
       for (const st of twinklers) {

@@ -236,12 +236,14 @@ export function createWeatherView(
   const precip = new Graphics();
   precip.zIndex = 60;
   root.addChild(precip);
+  // Random positions and speeds, re-rolled on every wrap — a deterministic
+  // lattice here keeps its relative alignment forever and reads as a pattern.
   const MAX = 260;
-  const parts = Array.from({ length: MAX }, (_, i) => ({
-    x: (i * 167) % W,
-    y: (i * 97) % H,
-    f: (i % 13) / 13,
-    phase: i,
+  const parts = Array.from({ length: MAX }, () => ({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    f: Math.random(),
+    phase: Math.random() * 6.28,
   }));
 
   // --- Fog notice (fog itself is intentionally not rendered) ---
@@ -293,7 +295,11 @@ export function createWeatherView(
         const vy = 720 + p.f * 320;
         p.y += vy * dt;
         p.x += vx * dt;
-        if (p.y > H) p.y -= H;
+        if (p.y > H) {
+          p.y -= H;
+          p.x = Math.random() * W;
+          p.f = Math.random();
+        }
         if (p.x > W) p.x -= W;
         else if (p.x < 0) p.x += W;
         const k = (13 + p.f * 9) / Math.hypot(vx, vy);
@@ -306,7 +312,12 @@ export function createWeatherView(
         p.phase += dt;
         p.y += (50 + p.f * 70) * dt;
         p.x += (s.wind * 40 + Math.sin(p.phase) * 18) * dt;
-        if (p.y > H) p.y -= H;
+        if (p.y > H) {
+          p.y -= H;
+          p.x = Math.random() * W;
+          p.f = Math.random();
+          p.phase = Math.random() * 6.28;
+        }
         if (p.x > W) p.x -= W;
         else if (p.x < 0) p.x += W;
         precip.circle(p.x, p.y, 1.5 + p.f * 2).fill({ color: 0xffffff, alpha: 0.9 });

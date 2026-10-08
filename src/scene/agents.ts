@@ -67,40 +67,173 @@ function buildDog(rng: Rng) {
   return { root, animate };
 }
 
-/** A duck floating and drifting on the water. */
+/**
+ * A mallard drifting on the water: drake (green head, black tail curl) or
+ * duck (mottled brown), with a wake, a faint reflection, dabbling
+ * (tail-up feeding) and preening pauses. One duck can lead a brood of
+ * ducklings through late spring and summer.
+ */
+function buildMallard(female: boolean) {
+  const holder = new Container(); // flipped by direction
+  const rig = new Container(); // tilted when dabbling
+  const reflection = new Graphics();
+  reflection.ellipse(0, 4.5, 10, 2).fill({ color: 0xffffff, alpha: 0.13 });
+  const wake = new Graphics();
+  wake
+    .moveTo(-9, 2)
+    .lineTo(-21, -2)
+    .moveTo(-9, 3)
+    .lineTo(-21, 8)
+    .stroke({ width: 1, color: 0xffffff });
+
+  const bodyC = female ? 0x9a7b52 : 0xa8a49c;
+  const wingC = female ? 0x7e6442 : 0x8a867e;
+  const g = new Graphics();
+  // Tail (the drake's little black curl).
+  g.poly([-10, -3, -15, -8, -8, -6]).fill({ color: female ? 0x6e5638 : 0x3a3630 });
+  g.ellipse(0, -2.5, 11, 5.5).fill({ color: bodyC });
+  if (female) {
+    for (const [mx, my] of [[-4, -4], [1, -1.5], [-7, -1]] as const) {
+      g.ellipse(mx, my, 2.4, 1.3).fill({ color: 0x6e5638, alpha: 0.6 });
+    }
+  } else {
+    g.ellipse(6.5, -1.5, 4.5, 3.8).fill({ color: 0x6e4a2c }); // chestnut chest
+  }
+  g.ellipse(-2, -3, 6.5, 3.2).fill({ color: wingC });
+  g.rect(-4.5, -2, 3, 1.4).fill({ color: 0x3a5aa0, alpha: 0.9 }); // speculum
+
+  const head = new Container();
+  head.position.set(7.5, -7.5);
+  const hg = new Graphics();
+  if (!female) hg.rect(-1.6, 1.6, 3.2, 1.4).fill({ color: 0xf0ede4 }); // neck ring
+  hg.circle(0, -1, 4.2).fill({ color: female ? 0x8a6f48 : 0x2f7a4d });
+  hg.poly([3.4, -2.2, 7.6, -0.9, 3.4, 0.5]).fill({ color: 0xe8a33a });
+  hg.circle(1.3, -2.2, 0.6).fill({ color: 0x1c1c20 });
+  head.addChild(hg);
+
+  rig.addChild(g, head);
+  holder.addChild(reflection, wake, rig);
+  return { holder, rig, head, wake };
+}
+
+function buildDuckling() {
+  const holder = new Container();
+  const g = new Graphics();
+  g.ellipse(0, -1.5, 5, 3).fill({ color: 0xd8c974 });
+  g.poly([-4.5, -2, -7, -4.5, -3.5, -4]).fill({ color: 0x5a4a28 }); // tail
+  g.ellipse(-1, -3.5, 3, 1.6).fill({ color: 0x5a4a28, alpha: 0.8 }); // back
+  g.circle(3.5, -5, 2.6).fill({ color: 0xd8c974 });
+  g.ellipse(2.8, -6.6, 2.4, 1.4).fill({ color: 0x5a4a28 }); // cap
+  g.poly([5.6, -5.6, 7.8, -4.9, 5.6, -4.2]).fill({ color: 0x8a6f3a });
+  g.circle(4.4, -5.6, 0.45).fill({ color: 0x1c1c20 });
+  holder.addChild(g);
+  return holder;
+}
+
+type DuckState = "swim" | "dabble" | "preen";
+
 function createDuck(
-  index: number,
+  rng: Rng,
   baseX: number,
   baseY: number,
   speed: number,
   worldW: number,
+  opts: { female?: boolean; brood?: boolean } = {},
 ) {
+  const female = opts.female ?? chance(rng, 0.45);
   const view = new Container();
-  const g = new Graphics();
-  g.ellipse(0, 0, 10, 6).fill({ color: 0xf2f2ea }); // body
-  g.circle(7, -6, 4).fill({ color: 0xf2f2ea }); // head
-  g.poly([10, -6, 15, -5, 10, -4]).fill({ color: 0xe8a33a }); // beak
-  g.ellipse(-4, -1, 6, 3).fill({ color: 0xcfcfc4 }); // wing
-  view.addChild(g);
+  const m = buildMallard(female);
+  view.addChild(m.holder);
+  const sc = lerp(0.75, 1.15, clamp01((baseY - 440) / (520 - 440)));
+
+  const ducklings = opts.brood
+    ? Array.from({ length: 3 + (chance(rng, 0.5) ? 1 : 0) }, () => ({
+        holder: buildDuckling(),
+        x: baseX - 20,
+        dir: 1 as 1 | -1,
+        phase: rng() * 6.28,
+      }))
+    : [];
+  for (const d of ducklings) view.addChild(d.holder);
 
   let x = baseX;
   let spd = speed;
-  let phase = index;
+  let dir: 1 | -1 = speed >= 0 ? 1 : -1;
+  let phase = rng() * 6.28;
+  let state: DuckState = "swim";
+  let stateT = 0;
+  let stateDur = range(rng, 5, 14);
+  let tilt = 0; // eased dabble tilt
+  let headPose = 0; // eased preen pose
 
-  const update = (dtMs: number) => {
-    const dt = dtMs / 1000;
-    x += spd * dt;
-    if (x < 40) {
-      x = 40;
-      spd = Math.abs(spd);
-    } else if (x > worldW - 40) {
-      x = worldW - 40;
-      spd = -Math.abs(spd);
+  const update = (dtMs: number, month: number) => {
+    const dt = Math.min(dtMs / 1000, 0.1);
+    stateT += dt;
+    if (stateT >= stateDur) {
+      stateT = 0;
+      const r = rng();
+      if (state !== "swim") {
+        state = "swim";
+        stateDur = range(rng, 5, 14);
+      } else if (r < 0.4) {
+        state = "dabble";
+        stateDur = range(rng, 1.3, 2.4);
+      } else if (r < 0.6) {
+        state = "preen";
+        stateDur = range(rng, 2, 3.5);
+      } else {
+        stateDur = range(rng, 4, 10);
+      }
+    }
+
+    const swimming = state === "swim";
+    if (swimming) {
+      x += spd * dt;
+      if (x < 40) {
+        x = 40;
+        spd = Math.abs(spd);
+      } else if (x > worldW - 40) {
+        x = worldW - 40;
+        spd = -Math.abs(spd);
+      }
+      dir = spd >= 0 ? 1 : -1;
     }
     phase += dt * 2;
-    view.x = x;
-    view.y = baseY + Math.sin(phase) * 1.6;
-    view.scale.x = spd >= 0 ? 1 : -1;
+
+    // Ease into/out of the tail-up dabble and the preen head-tuck.
+    const tiltTarget = state === "dabble" ? 0.95 : 0;
+    tilt += (tiltTarget - tilt) * Math.min(1, 7 * dt);
+    const poseTarget = state === "preen" ? 1 : 0;
+    headPose += (poseTarget - headPose) * Math.min(1, 6 * dt);
+
+    m.holder.x = x;
+    m.holder.y = baseY + Math.sin(phase) * 1.6 + tilt * 2;
+    m.holder.scale.set(dir * sc, sc);
+    m.rig.rotation = tilt + Math.sin(phase * 0.9) * 0.05;
+    m.head.visible = tilt < 0.5; // head underwater while dabbling
+    m.head.rotation = headPose * -2.1;
+    m.head.x = 7.5 - headPose * 6;
+    m.wake.alpha = swimming ? 0.3 : 0;
+    view.zIndex = baseY;
+
+    // Brood follows the mother in a wobbly line (late spring – summer).
+    const mo = ((month % 12) + 12) % 12;
+    const broodOut = mo > 4.3 && mo < 7.8;
+    let ahead = { x, dir };
+    for (const d of ducklings) {
+      d.holder.visible = broodOut;
+      if (!broodOut) continue;
+      const target = ahead.x - ahead.dir * 13;
+      const dx = target - d.x;
+      d.x += dx * Math.min(1, 2.2 * dt);
+      if (Math.abs(dx) > 2) d.dir = dx > 0 ? 1 : -1;
+      d.phase += dt * 3;
+      const dsc = sc * 0.55;
+      d.holder.x = d.x;
+      d.holder.y = baseY + 1 + Math.sin(d.phase) * 1.2;
+      d.holder.scale.set(d.dir * dsc, dsc);
+      ahead = d;
+    }
   };
   return { view, update };
 }
@@ -182,9 +315,9 @@ export function createAgents(
   ]);
 
   const ducks = [
-    createDuck(0, 300, 470, 12, worldW),
-    createDuck(1, 700, 500, -9, worldW),
-    createDuck(2, 1100, 455, 10, worldW),
+    createDuck(rng, 300, 470, 12, worldW, { female: true, brood: true }),
+    createDuck(rng, 700, 500, -9, worldW, { female: false }),
+    createDuck(rng, 1100, 455, 10, worldW),
   ];
   for (const d of ducks) water.addChild(d.view);
 
@@ -507,7 +640,7 @@ export function createAgents(
     const ducksHome = coldness(ctx.month) < 0.85;
     for (const d of ducks) {
       d.view.visible = ducksHome;
-      if (ducksHome) d.update(dtMs);
+      if (ducksHome) d.update(dtMs, ctx.month);
     }
   };
 

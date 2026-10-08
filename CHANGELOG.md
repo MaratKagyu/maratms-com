@@ -24,6 +24,10 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   wind, the sun/moon casts a glinting reflection path that widens toward the
   shore and wobbles with the waves, daytime sparkles, a foam line along the
   grass edge; sitters can hold umbrellas on benches.
+- Detailed clouds: seeded cumulus built from stacked puff tiers with a flat
+  shadowed underside and sunlit caps, plus thin high wisps; each layer is
+  tinted by the time of day (white at noon, cream-and-rose at the golden
+  hours, moonlit slate at night).
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

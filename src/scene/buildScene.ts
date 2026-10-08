@@ -207,7 +207,6 @@ export function buildScene(app: Application, env: Environment): Scene {
 
   function update(timeOfDay: number, month: number, dtMs: number) {
     const w = weather.sample(month, dtMs);
-    weatherView.update(w, dtMs);
 
     agents.update(dtMs, { month, hour: timeOfDay, weather: w });
 
@@ -228,6 +227,7 @@ export function buildScene(app: Application, env: Environment): Scene {
 
     const L = computeLighting(timeOfDay, W, HORIZON_Y, daylight);
 
+    weatherView.update(w, dtMs, L);
     water.update(dtMs, L, w);
 
     const bucket = Math.round(timeOfDay * 20);

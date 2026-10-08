@@ -1,4 +1,6 @@
 import { Container, Graphics, Text } from "pixi.js";
+import type { Lighting } from "./lighting";
+import { mulberry32, range } from "./rng";
 
 export type WeatherKind = "clear" | "cloudy" | "rain" | "snow" | "fog";
 
@@ -96,7 +98,103 @@ export function createWeather(): WeatherController {
   return { sample };
 }
 
-export type WeatherView = { update: (s: WeatherState, dtMs: number) => void };
+export type WeatherView = {
+  update: (s: WeatherState, dtMs: number, L: Lighting) => void;
+};
+
+type CloudKind = "towering" | "puffy" | "wisp";
+type Cloud = {
+  view: Container;
+  body: Graphics;
+  shade: Graphics;
+  lite: Graphics;
+  spd: number;
+};
+
+/**
+ * A cumulus built from stacked puffs, drawn white in three layers — body,
+ * shadowed underside, sunlit tops — each tinted separately by the time of
+ * day, so clouds go cream-and-rose at sunset and moonlit slate at night.
+ */
+function makeCloud(seed: number, kind: CloudKind, spd: number): Cloud {
+  const rng = mulberry32(seed);
+  const view = new Container();
+  const body = new Graphics();
+  const shade = new Graphics();
+  const lite = new Graphics();
+
+  if (kind === "wisp") {
+    // Thin horizontal streaks, body layer only.
+    const len = range(rng, 130, 230);
+    for (let i = 0; i < 3; i++) {
+      body
+        .ellipse(
+          range(rng, -len * 0.3, len * 0.3),
+          i * range(rng, 4, 9) - 8,
+          range(rng, 55, len * 0.5 + 30),
+          range(rng, 4.5, 8),
+        )
+        .fill({ color: 0xffffff, alpha: 0.5 });
+    }
+    view.addChild(body, shade, lite);
+    return { view, body, shade, lite, spd };
+  }
+
+  const w = kind === "towering" ? range(rng, 250, 330) : range(rng, 150, 230);
+  const baseR = w * 0.17;
+  const puffs: { x: number; y: number; r: number }[] = [];
+
+  // Base row with roughly aligned bottoms, then shrinking dome tiers.
+  const nBase = Math.round(w / (baseR * 1.1));
+  for (let i = 0; i < nBase; i++) {
+    const r = baseR * range(rng, 0.85, 1.2);
+    puffs.push({
+      x: -w / 2 + (i + 0.5) * (w / nBase) + range(rng, -6, 6),
+      y: -r * 0.8,
+      r,
+    });
+  }
+  const tiers = kind === "towering" ? 3 : 2;
+  let tierW = w * 0.68;
+  let tierY = -baseR * 1.5;
+  for (let t = 1; t < tiers; t++) {
+    const n = Math.max(2, Math.round(nBase * (1 - t * 0.33)));
+    for (let i = 0; i < n; i++) {
+      puffs.push({
+        x: (-tierW / 2 + (i + 0.5) * (tierW / n)) * range(rng, 0.85, 1) + range(rng, -8, 8),
+        y: tierY - range(rng, 0, baseR * 0.4),
+        r: baseR * range(rng, 0.75, 1.1) * (1 - t * 0.12),
+      });
+    }
+    tierW *= 0.6;
+    tierY -= baseR * range(rng, 0.9, 1.2);
+  }
+
+  for (const p of puffs) body.circle(p.x, p.y, p.r).fill({ color: 0xffffff, alpha: 0.97 });
+  body.ellipse(0, -baseR * 0.35, w * 0.52, baseR * 0.55).fill({ color: 0xffffff, alpha: 0.97 });
+
+  // Flat shadowed underside.
+  shade.ellipse(0, -baseR * 0.22, w * 0.48, baseR * 0.42).fill({ color: 0xffffff, alpha: 0.5 });
+  for (const p of puffs) {
+    if (p.y > -baseR * 1.2) {
+      shade
+        .circle(p.x + p.r * 0.1, p.y + p.r * 0.45, p.r * 0.62)
+        .fill({ color: 0xffffff, alpha: 0.32 });
+    }
+  }
+
+  // Sunlit caps on the upper puffs.
+  for (const p of puffs) {
+    if (p.y < -baseR * 1.1) {
+      lite
+        .circle(p.x - p.r * 0.25, p.y - p.r * 0.32, p.r * 0.55)
+        .fill({ color: 0xffffff, alpha: 0.75 });
+    }
+  }
+
+  view.addChild(body, shade, lite);
+  return { view, body, shade, lite, spd };
+}
 
 /**
  * Weather visuals, added to `root` with explicit zIndex so they interleave with
@@ -110,36 +208,28 @@ export function createWeatherView(
   W: number,
   H: number,
 ): WeatherView {
-  // --- Clouds ---
+  // --- Clouds: a seeded sky of cumulus, puffs and wisps ---
   const clouds = new Container();
   clouds.zIndex = 20;
   clouds.alpha = 0;
-  const cloudDefs = [
-    { x: 200, y: 90, s: 1.2, spd: 8 },
-    { x: 620, y: 60, s: 1.6, spd: 6 },
-    { x: 1000, y: 120, s: 1.1, spd: 10 },
-    { x: 1350, y: 80, s: 1.4, spd: 7 },
-    { x: 820, y: 160, s: 0.9, spd: 12 },
+  const cloudDefs: { kind: CloudKind; x: number; y: number; s: number; spd: number }[] = [
+    { kind: "towering", x: 620, y: 205, s: 1.15, spd: 6 },
+    { kind: "towering", x: 1360, y: 185, s: 0.95, spd: 7 },
+    { kind: "puffy", x: 200, y: 160, s: 1.0, spd: 9 },
+    { kind: "puffy", x: 1000, y: 180, s: 0.8, spd: 11 },
+    { kind: "puffy", x: 60, y: 230, s: 0.62, spd: 13 },
+    { kind: "wisp", x: 460, y: 55, s: 1.0, spd: 4 },
+    { kind: "wisp", x: 1120, y: 38, s: 1.2, spd: 3.5 },
+    { kind: "wisp", x: 810, y: 235, s: 0.75, spd: 5 },
   ];
-  const cloudList: { g: Graphics; spd: number }[] = [];
-  const puffs: [number, number, number][] = [
-    [0, 0, 46],
-    [38, 6, 34],
-    [-40, 8, 34],
-    [10, -18, 32],
-    [70, 4, 26],
-    [-70, 6, 24],
-  ];
-  for (const d of cloudDefs) {
-    const g = new Graphics();
-    for (const [px, py, r] of puffs) {
-      g.ellipse(px, py, r * 1.2, r).fill({ color: 0xffffff, alpha: 0.9 });
-    }
-    g.position.set(d.x, d.y);
-    g.scale.set(d.s);
-    clouds.addChild(g);
-    cloudList.push({ g, spd: d.spd });
-  }
+  const cloudList: Cloud[] = [];
+  cloudDefs.forEach((d, i) => {
+    const c = makeCloud(i * 7919 + 13, d.kind, d.spd);
+    c.view.position.set(d.x, d.y);
+    c.view.scale.set(d.s);
+    clouds.addChild(c.view);
+    cloudList.push(c);
+  });
   root.addChild(clouds);
 
   // --- Precipitation (redrawn each frame) ---
@@ -174,14 +264,17 @@ export function createWeatherView(
   fogNote.alpha = 0;
   hud.addChild(fogNote);
 
-  const update = (s: WeatherState, dtMs: number) => {
+  const update = (s: WeatherState, dtMs: number, L: Lighting) => {
     const dt = dtMs / 1000;
 
-    clouds.alpha = s.cloud;
+    clouds.alpha = Math.min(1, s.cloud * 1.1);
     for (const c of cloudList) {
-      c.g.x += s.wind * c.spd * dt * 10;
-      if (c.g.x > W + 320) c.g.x = -320;
-      else if (c.g.x < -320) c.g.x = W + 320;
+      c.view.x += s.wind * c.spd * dt * 10;
+      if (c.view.x > W + 400) c.view.x = -400;
+      else if (c.view.x < -400) c.view.x = W + 400;
+      c.body.tint = L.cloudBody;
+      c.shade.tint = L.cloudShade;
+      c.lite.tint = L.cloudLite;
     }
 
     fogNote.alpha = s.fog > 0.25 ? Math.min(1, (s.fog - 0.25) / 0.3) * 0.9 : 0;

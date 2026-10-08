@@ -11,6 +11,10 @@ export type Lighting = {
   celestialY: number;
   celestialColor: number;
   starAlpha: number;
+  /** Cloud layer tints: lit body, shadowed underside, sunlit tops. */
+  cloudBody: number;
+  cloudShade: number;
+  cloudLite: number;
 };
 
 type Stop = {
@@ -20,20 +24,25 @@ type Stop = {
   gradeColor: number;
   gradeAlpha: number;
   starAlpha: number;
+  cloudBody: number;
+  cloudShade: number;
+  cloudLite: number;
 };
 
 // Keyframes across the day; values are interpolated between neighbours.
+// Cloud tints chase the light: cream-and-rose at the golden hours,
+// plain white at noon, moonlit slate at night.
 const STOPS: Stop[] = [
-  { t: 0, skyTop: 0x0b1026, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.55, starAlpha: 1 },
-  { t: 5, skyTop: 0x1d2748, skyBottom: 0x4a4a6a, gradeColor: 0x101838, gradeAlpha: 0.45, starAlpha: 0.6 },
-  { t: 6.5, skyTop: 0x3a5a8c, skyBottom: 0xe9a35c, gradeColor: 0xff8a3d, gradeAlpha: 0.18, starAlpha: 0 },
-  { t: 8, skyTop: 0x4f86c0, skyBottom: 0xd7ebf5, gradeColor: 0x000000, gradeAlpha: 0, starAlpha: 0 },
-  { t: 12, skyTop: 0x5b9bd5, skyBottom: 0xcfe6f2, gradeColor: 0x000000, gradeAlpha: 0, starAlpha: 0 },
-  { t: 17, skyTop: 0x5b93c8, skyBottom: 0xdfeaf0, gradeColor: 0xffe0a0, gradeAlpha: 0.06, starAlpha: 0 },
-  { t: 19, skyTop: 0x3f5a8f, skyBottom: 0xf1854a, gradeColor: 0xff7a2d, gradeAlpha: 0.22, starAlpha: 0 },
-  { t: 20.5, skyTop: 0x24305c, skyBottom: 0x6b4a6e, gradeColor: 0x241848, gradeAlpha: 0.4, starAlpha: 0.35 },
-  { t: 22, skyTop: 0x0d1330, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.52, starAlpha: 1 },
-  { t: 24, skyTop: 0x0b1026, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.55, starAlpha: 1 },
+  { t: 0, skyTop: 0x0b1026, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.55, starAlpha: 1, cloudBody: 0x6a7490, cloudShade: 0x4a5368, cloudLite: 0x8d97b4 },
+  { t: 5, skyTop: 0x1d2748, skyBottom: 0x4a4a6a, gradeColor: 0x101838, gradeAlpha: 0.45, starAlpha: 0.6, cloudBody: 0x767a9c, cloudShade: 0x555878, cloudLite: 0xa591a6 },
+  { t: 6.5, skyTop: 0x3a5a8c, skyBottom: 0xe9a35c, gradeColor: 0xff8a3d, gradeAlpha: 0.18, starAlpha: 0, cloudBody: 0xffd9b8, cloudShade: 0xc897a4, cloudLite: 0xffeecd },
+  { t: 8, skyTop: 0x4f86c0, skyBottom: 0xd7ebf5, gradeColor: 0x000000, gradeAlpha: 0, starAlpha: 0, cloudBody: 0xf8fbff, cloudShade: 0xc6d4e4, cloudLite: 0xffffff },
+  { t: 12, skyTop: 0x5b9bd5, skyBottom: 0xcfe6f2, gradeColor: 0x000000, gradeAlpha: 0, starAlpha: 0, cloudBody: 0xfafdff, cloudShade: 0xc2d0e0, cloudLite: 0xffffff },
+  { t: 17, skyTop: 0x5b93c8, skyBottom: 0xdfeaf0, gradeColor: 0xffe0a0, gradeAlpha: 0.06, starAlpha: 0, cloudBody: 0xfdf7ec, cloudShade: 0xc6cbde, cloudLite: 0xfffaf0 },
+  { t: 19, skyTop: 0x3f5a8f, skyBottom: 0xf1854a, gradeColor: 0xff7a2d, gradeAlpha: 0.22, starAlpha: 0, cloudBody: 0xffc9a0, cloudShade: 0xb5879c, cloudLite: 0xffe3b6 },
+  { t: 20.5, skyTop: 0x24305c, skyBottom: 0x6b4a6e, gradeColor: 0x241848, gradeAlpha: 0.4, starAlpha: 0.35, cloudBody: 0x9a86a8, cloudShade: 0x695a80, cloudLite: 0xc7a7b7 },
+  { t: 22, skyTop: 0x0d1330, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.52, starAlpha: 1, cloudBody: 0x5c6488, cloudShade: 0x3f4668, cloudLite: 0x7c86aa },
+  { t: 24, skyTop: 0x0b1026, skyBottom: 0x1b2340, gradeColor: 0x0a1030, gradeAlpha: 0.55, starAlpha: 1, cloudBody: 0x6a7490, cloudShade: 0x4a5368, cloudLite: 0x8d97b4 },
 ];
 
 function interpStops(t: number) {
@@ -53,6 +62,9 @@ function interpStops(t: number) {
     gradeColor: lerpColor(a.gradeColor, b.gradeColor, f),
     gradeAlpha: lerp(a.gradeAlpha, b.gradeAlpha, f),
     starAlpha: lerp(a.starAlpha, b.starAlpha, f),
+    cloudBody: lerpColor(a.cloudBody, b.cloudBody, f),
+    cloudShade: lerpColor(a.cloudShade, b.cloudShade, f),
+    cloudLite: lerpColor(a.cloudLite, b.cloudLite, f),
   };
 }
 
@@ -99,5 +111,8 @@ export function computeLighting(
     celestialY: y,
     celestialColor: color,
     starAlpha: s.starAlpha,
+    cloudBody: s.cloudBody,
+    cloudShade: s.cloudShade,
+    cloudLite: s.cloudLite,
   };
 }

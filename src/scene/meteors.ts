@@ -64,10 +64,10 @@ export function createMeteors(W: number, horizonY: number): Meteors {
     const dy = Math.sin(angle);
     const speed = 500 + Math.random() * 450;
     const bolide = !day && Math.random() < 0.12;
-    const dur = (0.45 + Math.random() * 0.55) * (bolide ? 1.4 : 1);
-    const travelY = dy * speed * dur;
-    const band = Math.max(40, horizonY - 160 - travelY);
-    const y0 = 18 + Math.random() * band;
+    const y0 = 18 + Math.random() * (horizonY - 220);
+    // Burn out well above the horizon — a meteor must never reach the sea.
+    const maxDur = (horizonY - 60 - y0) / (dy * speed);
+    const dur = Math.min((0.45 + Math.random() * 0.55) * (bolide ? 1.4 : 1), maxDur);
     const x0 = dir > 0 ? Math.random() * W * 0.6 : W * 0.4 + Math.random() * W * 0.6;
     meteors.push({
       x0,

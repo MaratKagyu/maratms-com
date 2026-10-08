@@ -48,6 +48,7 @@ function buildCat(rng: Rng) {
   const torso = new Container();
   const body = new Graphics();
   body.roundRect(-11, hipY - 8.5, 22, 9, 4.5).fill({ color: kind.fur });
+  const fur = kind.fur;
   body.ellipse(5, hipY - 2, 5.5, 2.4).fill({ color: kind.chest, alpha: 0.7 });
   if (kind.tabby) {
     for (const sx of [-7, -2.5, 2]) {
@@ -75,28 +76,51 @@ function buildCat(rng: Rng) {
   tg.circle(-8.4, -10.8, 1.3).fill({ color: kind.dark }); // tail tip
   tail.addChild(tg);
 
-  torso.addChild(tail, body, head);
+  // A tiny hooded rain cape, worn while sheltering at the campfire.
+  const coat = new Graphics();
+  coat.roundRect(-13, hipY - 11, 23, 8.5, 4).fill({ color: 0xc2503c });
+  coat.roundRect(-13, hipY - 11, 23, 3, 1.5).fill({ color: 0x000000, alpha: 0.12 });
+  coat.circle(10, hipY - 7.6, 5.5).fill({ color: 0xc2503c }); // hood
+  coat.circle(12.4, hipY - 7.9, 3.9).fill({ color: fur }); // face peeking out
+  coat.circle(12.8, hipY - 8.6, 0.55).fill({ color: 0x1c1c20 }); // eye again
+  coat.alpha = 0;
+
+  torso.addChild(tail, body, head, coat);
   root.addChild(torso);
 
   /**
    * walkK: leg swing amount; crouch 0..1 flattens into the stalking pose;
-   * flick: extra tail swish; paw: front paw scratching at the burrow.
+   * flick: extra tail swish; paw: front paw scratching at the burrow;
+   * sit 0..1 folds the haunches into an upright sitting pose.
    */
-  const animate = (phase: number, walkK: number, crouch: number, flick: number, paw: number) => {
+  const animate = (
+    phase: number,
+    walkK: number,
+    crouch: number,
+    flick: number,
+    paw: number,
+    sit = 0,
+  ) => {
     const swing = 0.52 * walkK;
     const s1 = Math.sin(phase);
     const s2 = Math.sin(phase + Math.PI);
-    legs[0].rotation = s1 * swing;
-    legs[1].rotation = s2 * swing;
-    legs[2].rotation = s2 * swing;
-    legs[3].rotation = s1 * swing + paw;
-    for (const l of legs) l.scale.y = 1 - crouch * 0.32;
-    torso.y = crouch * 2.6 + Math.sin(phase * 2) * 0.3 * walkK;
-    head.rotation = -crouch * 0.3;
+    legs[0].rotation = s1 * swing + sit * 0.3;
+    legs[1].rotation = s2 * swing + sit * 0.3;
+    legs[2].rotation = s2 * swing - sit * 0.14;
+    legs[3].rotation = s1 * swing + paw - sit * 0.14;
+    const squash = 1 - crouch * 0.32;
+    legs[0].scale.y = squash * (1 - sit * 0.55);
+    legs[1].scale.y = squash * (1 - sit * 0.55);
+    legs[2].scale.y = squash * (1 - sit * 0.08);
+    legs[3].scale.y = squash * (1 - sit * 0.08);
+    torso.rotation = -0.42 * sit;
+    torso.x = -sit * 1.6;
+    torso.y = crouch * 2.6 + sit * 2 + Math.sin(phase * 2) * 0.3 * walkK;
+    head.rotation = -crouch * 0.3 + sit * 0.42; // keep the head level while seated
     head.x = HEAD_X + crouch * 1.8;
-    tail.rotation = crouch * 1.05 + Math.sin(phase * 0.7) * 0.12 + flick;
+    tail.rotation = crouch * 1.05 + sit * 1.25 + Math.sin(phase * 0.7) * 0.12 + flick;
   };
-  return { root, shadow, animate };
+  return { root, shadow, coat, animate };
 }
 
 /** A gopher standing upright in side profile, base of the body at (0,0). */
@@ -119,7 +143,16 @@ function buildGopher() {
 
 type Puff = { x: number; y: number; vx: number; vy: number; age: number; life: number };
 
-type CatState = "prowl" | "pause" | "stalk" | "dash" | "sniff" | "leave" | "away";
+type CatState =
+  | "prowl"
+  | "pause"
+  | "stalk"
+  | "dash"
+  | "sniff"
+  | "shelter" // running to the campfire out of the rain
+  | "sitCamp" // sitting by the fire in a tiny rain cape
+  | "leave"
+  | "away";
 type BurrowState = "idle" | "grow" | "wait" | "peek" | "up" | "dive" | "linger" | "fade";
 
 type GopherUnit = {
@@ -155,6 +188,8 @@ export function createCritters(
   grassTopY: (x: number) => number,
   pathY: (x: number) => number,
   obstacles: { x: number; y: number }[],
+  /** Where the cat shelters from rain: a spot by the campfire. */
+  shelter: { x: number; y: number; dir: 1 | -1 },
 ): Critters {
   const rng = mulberry32((Math.random() * 2 ** 32) >>> 0);
   const EDGE = 60;
@@ -175,9 +210,11 @@ export function createCritters(
     targetSpeed: 26,
     phase: rng() * 6.28,
     crouch: 0,
+    sit: 0, // eased sitting pose (by the campfire)
     idleT: rng() * 10,
     prey: null as GopherUnit | null,
   };
+  let firstUpd = true;
 
   // --- The gophers and their burrows ---
   const makeUnit = (i: number): GopherUnit => {
@@ -273,12 +310,13 @@ export function createCritters(
     return false;
   };
 
-  // Hysteresis so the cat doesn't flap in and out at the threshold: it
-  // retreats only from real rain and returns once it has almost stopped.
-  const catWantsOut = (w: WeatherState) =>
-    (w.kind === "rain" && w.intensity > 0.45) || (w.kind === "snow" && w.intensity > 0.7);
-  const catOkToReturn = (w: WeatherState) =>
-    !((w.kind === "rain" && w.intensity > 0.25) || (w.kind === "snow" && w.intensity > 0.5));
+  // Rain sends the cat to the campfire (with hysteresis so it doesn't flap
+  // at the threshold); only a heavy snowfall still drives it off the scene.
+  const atCamp = () => cat.state === "shelter" || cat.state === "sitCamp";
+  const rainForCat = (w: WeatherState) =>
+    w.kind === "rain" && w.intensity > (atCamp() ? 0.18 : 0.35);
+  const catWantsOut = (w: WeatherState) => w.kind === "snow" && w.intensity > 0.7;
+  const catOkToReturn = (w: WeatherState) => !(w.kind === "snow" && w.intensity > 0.5);
 
   const gopherAwake = (ctx: CritterCtx) =>
     ctx.hour > 5.5 &&
@@ -315,12 +353,42 @@ export function createCritters(
     cat.stateT += dt;
     cat.idleT += dt;
 
+    // The scene can load mid-rain: the cat is already curled up by the fire.
+    if (firstUpd) {
+      firstUpd = false;
+      if (rainForCat(w)) {
+        cat.state = "sitCamp";
+        cat.x = shelter.x;
+        cat.y = shelter.y;
+        cat.tx = shelter.x;
+        cat.ty = shelter.y;
+        cat.dir = shelter.dir;
+        cat.speed = 0;
+        cat.targetSpeed = 0;
+        cat.sit = 1;
+      }
+    }
+
     if (catWantsOut(w) && cat.state !== "leave" && cat.state !== "away") {
       cat.state = "leave";
       cat.prey = null;
       cat.tx = cat.x < worldW / 2 ? -EDGE : worldW + EDGE;
       cat.ty = cat.y;
       cat.targetSpeed = 42;
+    }
+
+    // Rain: the cat dislikes it and makes a dash for the campfire.
+    if (
+      rainForCat(w) &&
+      !atCamp() &&
+      cat.state !== "leave" &&
+      cat.state !== "away"
+    ) {
+      cat.state = "shelter";
+      cat.prey = null;
+      cat.tx = shelter.x;
+      cat.ty = shelter.y;
+      cat.targetSpeed = 130;
     }
 
     // A surfaced gopher in front of the cat triggers the hunt.
@@ -402,6 +470,28 @@ export function createCritters(
         }
         break;
       }
+      case "shelter": {
+        cat.tx = shelter.x;
+        cat.ty = shelter.y;
+        if (!rainForCat(w)) {
+          cat.state = "prowl";
+          pickCatTarget();
+        } else if (Math.hypot(shelter.x - cat.x, shelter.y - cat.y) < 5) {
+          cat.state = "sitCamp";
+          cat.speed = 0;
+          cat.targetSpeed = 0;
+          cat.dir = shelter.dir;
+        }
+        break;
+      }
+      case "sitCamp": {
+        cat.dir = shelter.dir;
+        if (!rainForCat(w)) {
+          cat.state = "prowl";
+          pickCatTarget();
+        }
+        break;
+      }
       case "leave": {
         if (cat.x < -EDGE + 4 || cat.x > worldW + EDGE - 4) {
           cat.state = "away";
@@ -445,6 +535,9 @@ export function createCritters(
     const crouchTarget =
       cat.state === "stalk" ? 1 : cat.state === "dash" ? 0.35 : cat.state === "sniff" ? 0.6 : 0;
     cat.crouch += (crouchTarget - cat.crouch) * Math.min(1, 5 * dt);
+    const sitTarget = cat.state === "sitCamp" ? 1 : 0;
+    cat.sit += (sitTarget - cat.sit) * Math.min(1, 4 * dt);
+    catBuild.coat.alpha = cat.sit; // the little rain cape goes on once seated
 
     if (catBuild.root.visible) {
       cat.phase += dt * cat.speed * 0.16;
@@ -455,9 +548,10 @@ export function createCritters(
       catBuild.root.scale.set(cat.dir * sc, sc);
       catBuild.shadow.alpha = 0.18 - 0.11 * w.cloud;
       const walkK = clamp01(cat.speed / 26);
-      const flick = cat.state === "pause" ? Math.sin(cat.idleT * 2.8) * 0.3 : 0;
+      const flick =
+        cat.state === "pause" || cat.state === "sitCamp" ? Math.sin(cat.idleT * 2.8) * 0.3 : 0;
       const paw = cat.state === "sniff" ? Math.sin(cat.idleT * 9) * 0.45 : 0;
-      catBuild.animate(cat.phase, walkK, cat.crouch, flick, paw);
+      catBuild.animate(cat.phase, walkK, cat.crouch, flick, paw, cat.sit);
     }
 
     // ---------- Gophers ----------

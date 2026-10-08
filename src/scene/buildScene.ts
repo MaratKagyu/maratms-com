@@ -225,6 +225,12 @@ export function buildScene(app: Application, env: Environment): Scene {
       { x: CAMP.x, y: CAMP.y },
       { x: CAMP.x - 90, y: CAMP.y + 10 }, // the fire-pit side of the camp
     ],
+    // The cat shelters from rain beside the campfire, facing the flames.
+    {
+      x: CAMP.x - 74 * camp.view.scale.x,
+      y: CAMP.y + 22 * camp.view.scale.y,
+      dir: 1,
+    },
   );
 
   // --- Time-of-day overlays (above the static scene) ---

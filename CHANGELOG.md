@@ -62,7 +62,10 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   around the clock, rain or shine — a layered flickering flame with
   drifting embers and a warm glow that is subtle in daylight and cuts
   through the darkness at night. The two campers sit on the logs beside
-  it, and when it rains they pull on hooded waterproof raincoats.
+  it, and when it rains they pull on hooded waterproof raincoats. The
+  cat hates rain: at the first drops it sprints to the campfire and sits
+  upright beside the campers in a tiny hooded rain cape of its own,
+  tail-flicking at the flames until the rain lets up.
 - A prettier moon: it now shows today's real lunar phase (waxing lit on
   the right, waning on the left, never thinner than a sliver), with an
   earthshine ghost on the night side, grey maria, rim-lit craters and a

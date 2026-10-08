@@ -285,14 +285,19 @@ export function createWeatherView(
     const count = Math.floor(s.intensity * MAX);
 
     if (s.kind === "rain") {
+      // Streaks are drawn along their own velocity vector, so the slant
+      // always matches the direction the drops actually travel.
+      const vx = s.wind * 260;
       for (let i = 0; i < count; i++) {
         const p = parts[i];
-        p.y += (720 + p.f * 320) * dt;
-        p.x += s.wind * 120 * dt;
+        const vy = 720 + p.f * 320;
+        p.y += vy * dt;
+        p.x += vx * dt;
         if (p.y > H) p.y -= H;
         if (p.x > W) p.x -= W;
         else if (p.x < 0) p.x += W;
-        precip.moveTo(p.x, p.y).lineTo(p.x - s.wind * 14, p.y + 12 + p.f * 10);
+        const k = (13 + p.f * 9) / Math.hypot(vx, vy);
+        precip.moveTo(p.x, p.y).lineTo(p.x - vx * k, p.y - vy * k);
       }
       precip.stroke({ width: 1.4, color: 0x9fb8d0, alpha: 0.5 });
     } else {

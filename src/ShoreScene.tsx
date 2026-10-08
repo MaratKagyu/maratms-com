@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Application } from "pixi.js";
 import { buildScene } from "./scene/buildScene";
+import { buildGallery } from "./scene/gallery";
 import { createEnvironment } from "./scene/environment";
 import { createClock } from "./scene/clock";
 import styles from "./ShoreScene.module.css";
@@ -34,6 +35,12 @@ export default function ShoreScene() {
 
       app = instance;
       host.appendChild(instance.canvas);
+
+      // Dev-only character gallery; see src/scene/gallery.ts.
+      if (new URLSearchParams(window.location.search).has("gallery")) {
+        buildGallery(instance);
+        return;
+      }
 
       const scene = buildScene(instance, createEnvironment());
       const clock = createClock();

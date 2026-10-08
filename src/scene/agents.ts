@@ -1,53 +1,11 @@
 import { Container, Graphics } from "pixi.js";
 import { clamp01, lerp } from "./color";
+import { buildPerson, lookFromIndex } from "./person";
 
 export type Agent = { view: Container; update: (dtMs: number) => void };
 export type AgentSystem = { update: (dtMs: number) => void };
 
-const SHIRT = [0xcc4b4b, 0x3f6fb0, 0x4a9d5b, 0xd8a13a, 0x8a5aa8, 0x50a0a0];
-const PANTS = [0x394a5a, 0x5a4636, 0x2f3e4d, 0x444444];
-const SKIN = [0xf0c8a0, 0xe0aa80, 0xcaa06e];
 const FUR = [0x8a5a2b, 0x9a9a9a, 0x3a3a3a, 0xcaa15a];
-
-/** A walking person, drawn in side profile with pivoting limbs. Feet at (0,0). */
-function buildPerson(i: number) {
-  const root = new Container();
-  const body = new Container();
-
-  const legLen = 22;
-  const hipY = -legLen;
-  const torsoH = 24;
-  const shirt = SHIRT[i % SHIRT.length];
-  const pants = PANTS[i % PANTS.length];
-  const skin = SKIN[i % SKIN.length];
-
-  const legL = new Graphics().rect(-3, 0, 6, legLen).fill({ color: pants });
-  const legR = new Graphics().rect(-3, 0, 6, legLen).fill({ color: pants });
-  legL.position.set(-4, hipY);
-  legR.position.set(4, hipY);
-
-  const armL = new Graphics().rect(-2, 0, 4, 18).fill({ color: shirt });
-  const armR = new Graphics().rect(-2, 0, 4, 18).fill({ color: shirt });
-  armL.position.set(-6, hipY - torsoH + 4);
-  armR.position.set(6, hipY - torsoH + 4);
-
-  const torso = new Graphics();
-  torso.rect(-6, hipY - torsoH, 12, torsoH).fill({ color: shirt });
-  torso.circle(0, hipY - torsoH - 8, 7).fill({ color: skin });
-
-  body.addChild(armL, armR, torso);
-  root.addChild(legL, legR, body);
-
-  const swing = 0.5;
-  const animate = (phase: number) => {
-    legL.rotation = Math.sin(phase) * swing;
-    legR.rotation = Math.sin(phase + Math.PI) * swing;
-    armL.rotation = Math.sin(phase + Math.PI) * swing * 0.8;
-    armR.rotation = Math.sin(phase) * swing * 0.8;
-    body.y = -Math.abs(Math.sin(phase)) * 2;
-  };
-  return { root, animate };
-}
 
 /** A dog in side profile, facing +x by default. Feet at (0,0). */
 function buildDog(i: number) {
@@ -77,7 +35,7 @@ function buildDog(i: number) {
   root.addChild(body, tail);
 
   const swing = 0.6;
-  const animate = (phase: number) => {
+  const animate = (phase: number, _pace: number) => {
     legs[0].rotation = Math.sin(phase) * swing;
     legs[3].rotation = Math.sin(phase) * swing;
     legs[1].rotation = Math.sin(phase + Math.PI) * swing;
@@ -99,9 +57,16 @@ type WalkerCfg = {
 
 /** Wraps a figure with path-following movement, turning and a walk cycle. */
 function createWalker(cfg: WalkerCfg): Agent {
-  const built = cfg.kind === "person" ? buildPerson(cfg.index) : buildDog(cfg.index);
+  const built =
+    cfg.kind === "person"
+      ? (() => {
+          const p = buildPerson(lookFromIndex(cfg.index));
+          return { root: p.view, animate: p.animate };
+        })()
+      : buildDog(cfg.index);
   const view = built.root;
   const baseScale = cfg.kind === "dog" ? 0.9 : 1;
+  const pace = clamp01((Math.abs(cfg.speed) - 25) / 50);
   let x = cfg.x;
   let speed = cfg.speed;
   let phase = cfg.index; // desync gaits
@@ -117,7 +82,7 @@ function createWalker(cfg: WalkerCfg): Agent {
       speed = -Math.abs(speed);
     }
     const dir = speed >= 0 ? 1 : -1;
-    phase += dt * Math.abs(speed) * 0.06;
+    phase += dt * Math.abs(speed) * 0.11;
 
     const y = cfg.yAt(x);
     const sc = lerp(0.82, 1.08, clamp01((y - 720) / (840 - 720))) * baseScale;
@@ -125,7 +90,7 @@ function createWalker(cfg: WalkerCfg): Agent {
     view.y = y;
     view.zIndex = y; // sort with trees and benches
     view.scale.set(dir * sc, sc);
-    built.animate(phase);
+    built.animate(phase, pace);
   };
   return { view, update };
 }

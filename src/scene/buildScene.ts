@@ -3,6 +3,7 @@ import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBench } from "./entities";
 import { createGroundDetail } from "./ground";
+import { createCamp } from "./camp";
 import { makeBush, makeLamp, makeRock, makeStump, type Lamp, type SeasonalProp } from "./props";
 import { createMeteors } from "./meteors";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
@@ -199,6 +200,15 @@ export function buildScene(app: Application, env: Environment): Scene {
   });
   root.addChild(lampGlow);
 
+  // --- The campsite: tent, fire pit and campers (see camp.ts) ---
+  const CAMP = { x: 560, y: 866 };
+  const camp = createCamp(lerp(0.55, 1.2, clamp01((CAMP.y - 620) / (860 - 620))));
+  camp.view.position.set(CAMP.x, CAMP.y);
+  camp.view.zIndex = CAMP.y;
+  entities.addChild(camp.view);
+  camp.glow.position.set(CAMP.x - 56 * camp.view.scale.x, CAMP.y + 8 * camp.view.scale.y);
+  lampGlow.addChild(camp.glow);
+
   // --- Living agents: people & dogs on the path, ducks on the water ---
   const agents = createAgents(entities, waterLife, pathY, W, benchSpots);
 
@@ -208,7 +218,12 @@ export function buildScene(app: Application, env: Environment): Scene {
     W,
     grassTopY,
     pathY,
-    [...placements, ...propDefs].map(({ x, y }) => ({ x, y })),
+    [
+      ...placements.map(({ x, y }) => ({ x, y })),
+      ...propDefs.map(({ x, y }) => ({ x, y })),
+      { x: CAMP.x, y: CAMP.y },
+      { x: CAMP.x - 90, y: CAMP.y + 10 }, // the fire-pit side of the camp
+    ],
   );
 
   // --- Time-of-day overlays (above the static scene) ---
@@ -400,6 +415,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     // Park lamps come on through dusk and burn all night.
     const lampK = clamp01(L.starAlpha * 1.7);
     for (const lamp of lamps) lamp.setNight(lampK);
+    camp.update(dtMs, L, w);
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
     meteors.update(dtMs, L.starAlpha, w.cloud);
     if (stars.alpha > 0.01) {

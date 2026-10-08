@@ -209,7 +209,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   let lastSeasonBucket = Number.NaN;
 
   function update(timeOfDay: number, month: number, dtMs: number) {
-    agents.update(dtMs);
+    agents.update(dtMs, month);
 
     const w = weather.sample(month, dtMs);
     weatherView.update(w, dtMs);

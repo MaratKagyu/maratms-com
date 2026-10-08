@@ -1,12 +1,15 @@
 import { Application, Container, Graphics } from "pixi.js";
-import { buildPerson, lookFromIndex } from "./person";
+import { buildPerson, randomLook, type Archetype } from "./person";
+import { mulberry32 } from "./rng";
 
 /**
  * Dev-only character gallery (`/?gallery=1`): a zoomed lineup of figures
  * walking in place on a neutral background, for judging silhouettes and gait
  * without the scale and busyness of the full scene.
  *
- * Extra params: `n` figures in the row (default 8 — fewer means larger),
+ * The first four figures are always adult / kid / elder / jogger; the rest are
+ * random. Extra params: `n` figures (default 8 — fewer means larger),
+ * `seed` reroll the outfits, `month` dress for a season (default 6 = July),
  * `zoom` extra magnification (default 4 = fit), `pace` 0..1 (default 0.3),
  * `phase` freeze the walk cycle at a given radian value.
  */
@@ -15,6 +18,8 @@ export function buildGallery(app: Application) {
   const zoom = Number(params.get("zoom")) || 4;
   const pace = params.has("pace") ? Number(params.get("pace")) : 0.3;
   const frozen = params.get("phase") !== null ? Number(params.get("phase")) : null;
+  const seed = Number(params.get("seed")) || 1;
+  const month = params.has("month") ? Number(params.get("month")) : 6;
 
   const root = new Container();
   app.stage.addChild(root);
@@ -23,7 +28,11 @@ export function buildGallery(app: Application) {
   root.addChild(bg);
 
   const COUNT = Math.max(1, Math.min(16, Number(params.get("n")) || 8));
-  const figures = Array.from({ length: COUNT }, (_, i) => buildPerson(lookFromIndex(i)));
+  const FORCED: (Archetype | undefined)[] = ["adult", "kid", "elder", "jogger"];
+  const figures = Array.from({ length: COUNT }, (_, i) => {
+    const rng = mulberry32(seed * 7919 + i * 131);
+    return buildPerson(randomLook(rng, month, i < FORCED.length ? FORCED[i] : undefined));
+  });
   const row = new Container();
   for (let i = 0; i < COUNT; i++) {
     figures[i].view.x = (i + 0.5) * 110;
@@ -48,10 +57,15 @@ export function buildGallery(app: Application) {
   layout();
   window.addEventListener("resize", () => layout());
 
+  const paceOf = (i: number) => {
+    const a = figures[i].look.archetype;
+    return a === "jogger" ? 0.95 : a === "elder" ? 0.05 : a === "kid" ? 0.5 : pace;
+  };
+
   let phase = 0;
   app.ticker.add((t) => {
     phase += (t.deltaMS / 1000) * (3.2 + pace * 2.5);
     const p = frozen ?? phase;
-    for (let i = 0; i < COUNT; i++) figures[i].animate(p + i * 0.7, pace);
+    for (let i = 0; i < COUNT; i++) figures[i].animate(p + i * 0.7, paceOf(i));
   });
 }

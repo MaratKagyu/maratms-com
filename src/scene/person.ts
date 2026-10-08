@@ -1,5 +1,6 @@
 import { Container, Graphics } from "pixi.js";
-import { lerpColor } from "./color";
+import { clamp01, lerpColor } from "./color";
+import { chance, pick, range, type Rng } from "./rng";
 
 /**
  * Procedural park visitor, drawn in side profile from flat-vector primitives.
@@ -9,9 +10,13 @@ import { lerpColor } from "./color";
  * Origin (0,0) is between the feet; the figure faces +x. Flip with scale.x.
  */
 
-export type HairStyle = "bald" | "short" | "bob";
+export type Archetype = "adult" | "kid" | "elder" | "jogger";
+export type HairStyle = "bald" | "short" | "bob" | "long" | "bun" | "ponytail";
+export type TopKind = "tshirt" | "shirt" | "jacket" | "coat" | "hoodie";
+export type HatKind = "none" | "cap" | "beanie";
 
 export type PersonLook = {
+  archetype: Archetype;
   /** Feet-to-crown height in world px. */
   height: number;
   /** 0 slim .. 1 stocky. */
@@ -19,78 +24,146 @@ export type PersonLook = {
   skin: number;
   hairStyle: HairStyle;
   hairColor: number;
+  top: TopKind;
   topColor: number;
   bottomColor: number;
+  /** Bare shins (shorts) — joggers in warm weather. */
+  bareShins: boolean;
   shoeColor: number;
+  hat: HatKind;
+  hatColor: number;
+  bag: boolean;
+  backpack: boolean;
+  cane: boolean;
 };
 
 export type Person = {
   view: Container;
+  look: PersonLook;
   /** Advance the walk cycle. `phase` in radians; `pace` 0 stroll .. 1 jog. */
   animate: (phase: number, pace: number) => void;
 };
 
-const SHIRT = [0xcc4b4b, 0x3f6fb0, 0x4a9d5b, 0xd8a13a, 0x8a5aa8, 0x50a0a0];
-const PANTS = [0x394a5a, 0x5a4636, 0x2f3e4d, 0x444444];
-const SKIN = [0xf0c8a0, 0xe0aa80, 0xcaa06e];
-const HAIR = [0x3a2a1c, 0x1f1f22, 0x8a5a2b, 0xb8b2a8, 0x6e3a1e];
-const SHOES = [0x33302c, 0x4a4440, 0x5a3b28];
-const STYLES: HairStyle[] = ["short", "bob", "short", "bald", "bob", "short"];
+const SKIN = [0xf2cfae, 0xf0c8a0, 0xe0aa80, 0xb98354, 0x8d5a33];
+const HAIR = [0x1f1f22, 0x3a2a1c, 0x5a3b22, 0x7a4a24, 0xb08a4a, 0xc7622e];
+const HAIR_GREY = [0xd6d2cc, 0xb8b2a8, 0x918b83];
+const TSHIRT = [0xcc4b4b, 0x3f6fb0, 0x4a9d5b, 0xd8a13a, 0x8a5aa8, 0x50a0a0, 0xdde1e6, 0xd96a8b];
+const SHIRT_C = [0xb0c4d8, 0xc8b89a, 0x9ab8a0, 0xd8c8d8, 0x8aa8c0];
+const HOODIE_C = [0x9a4a4a, 0x4a5a8a, 0x5a7a52, 0x8a8a92, 0x6a4a7a];
+const JACKET_C = [0x3a4a62, 0x6a4a32, 0x4a6a52, 0x8a3a3a, 0x3a3a42, 0x946c38];
+const COAT_C = [0x2f3a52, 0x5a4432, 0x4a523a, 0x6e2f38, 0x3c3c46, 0x74583a];
+const PANTS = [0x394a5a, 0x44546a, 0x5a4636, 0x2f3e4d, 0x444444, 0x6b6456];
+const SHORTS = [0x2f3e4d, 0x444444, 0x8a3a3a, 0x3a6a8a];
+const SHOES = [0x33302c, 0x4a4440, 0x5a3b28, 0xe8e4dc];
+const BRIGHT = [0xd84b7a, 0x3fa0d0, 0x58b858, 0xe8a43a, 0x9a6ad8];
+const HAIRSTYLES: HairStyle[] = ["short", "bob", "long", "bun", "ponytail", "short", "bald"];
 
-/** Deterministic look for agent `i` (seeded generator arrives with M7). */
-export function lookFromIndex(i: number): PersonLook {
+/** 0 = midsummer .. 1 = midwinter, for dressing agents by month (0..12). */
+export function coldness(month: number): number {
+  const m = ((month % 12) + 12) % 12;
+  const d = Math.min(Math.abs(m - 6.5), 12 - Math.abs(m - 6.5));
+  return clamp01((d - 1.5) / 4);
+}
+
+/** Roll a full outfit + body for the given month's weather. */
+export function randomLook(rng: Rng, month: number, forced?: Archetype): PersonLook {
+  const r = rng();
+  const archetype: Archetype =
+    forced ?? (r < 0.62 ? "adult" : r < 0.74 ? "kid" : r < 0.88 ? "elder" : "jogger");
+  const cold = coldness(month);
+  const kid = archetype === "kid";
+  const elder = archetype === "elder";
+  const jogger = archetype === "jogger";
+
+  let top: TopKind;
+  if (jogger) top = cold > 0.55 ? "hoodie" : "tshirt";
+  else if (cold > 0.72) top = rng() < 0.55 ? "coat" : rng() < 0.6 ? "jacket" : "hoodie";
+  else if (cold > 0.38) top = pick(rng, ["jacket", "hoodie", "shirt", "jacket"] as const);
+  else top = rng() < 0.55 ? "tshirt" : rng() < 0.6 ? "shirt" : "hoodie";
+
+  const topColor =
+    top === "tshirt"
+      ? pick(rng, jogger ? BRIGHT : TSHIRT)
+      : top === "shirt"
+        ? pick(rng, SHIRT_C)
+        : top === "jacket"
+          ? pick(rng, JACKET_C)
+          : top === "coat"
+            ? pick(rng, COAT_C)
+            : pick(rng, HOODIE_C);
+
+  let hat: HatKind = "none";
+  if (cold > 0.65 && top !== "hoodie") hat = chance(rng, kid ? 0.9 : 0.7) ? "beanie" : "none";
+  else if (chance(rng, elder ? 0.35 : kid ? 0.3 : 0.15)) hat = "cap";
+
+  let hairStyle = pick(rng, HAIRSTYLES);
+  if (kid && hairStyle === "bald") hairStyle = "short";
+  if (elder && chance(rng, 0.3)) hairStyle = "bald";
+
+  const bareShins = jogger && cold < 0.55;
   return {
-    height: 58 + ((i * 7) % 5) * 3,
-    build: ((i * 5) % 4) / 3,
-    skin: SKIN[i % SKIN.length],
-    hairStyle: STYLES[i % STYLES.length],
-    hairColor: HAIR[i % HAIR.length],
-    topColor: SHIRT[i % SHIRT.length],
-    bottomColor: PANTS[i % PANTS.length],
-    shoeColor: SHOES[i % SHOES.length],
+    archetype,
+    height: kid ? range(rng, 36, 46) : elder ? range(rng, 52, 60) : range(rng, 56, 68),
+    build: elder ? range(rng, 0.3, 1) : range(rng, 0, 1),
+    skin: pick(rng, SKIN),
+    hairStyle,
+    hairColor: elder ? pick(rng, HAIR_GREY) : pick(rng, HAIR),
+    top,
+    topColor,
+    bottomColor: bareShins ? pick(rng, SHORTS) : pick(rng, PANTS),
+    bareShins,
+    shoeColor: jogger ? SHOES[3] : pick(rng, SHOES),
+    hat,
+    hatColor: pick(rng, kid ? BRIGHT : [0x4a4a52, 0x8a3a3a, 0x3a5a7a, 0x5a5244]),
+    bag: !kid && !jogger && chance(rng, 0.3),
+    backpack: kid && chance(rng, 0.55),
+    cane: elder && chance(rng, 0.65),
   };
 }
 
 /** Darken a colour for the far-side limbs so the profile reads with depth. */
 const far = (c: number) => lerpColor(c, 0x1a1a24, 0.3);
+const darker = (c: number) => lerpColor(c, 0x000000, 0.25);
 
 type Leg = { hip: Container; knee: Container; foot: Graphics };
 type Arm = { shoulder: Container; elbow: Container };
 
 export function buildPerson(look: PersonLook): Person {
   const h = look.height;
-  const headR = h * 0.1;
+  const kid = look.archetype === "kid";
+  const headR = h * (kid ? 0.135 : 0.1);
   const legLen = h * 0.47;
   const thighLen = legLen * 0.52;
   const shinLen = legLen * 0.48;
   const torsoH = h - legLen - headR * 2 - h * 0.045;
-  const torsoW = h * (0.19 + look.build * 0.08);
-  const legW = h * 0.058;
-  const armW = h * 0.05;
+  const torsoW = h * (kid ? 0.22 : 0.19 + look.build * 0.08);
+  const legW = h * (kid ? 0.065 : 0.058);
+  const armW = h * (kid ? 0.055 : 0.05);
   const upperLen = torsoH * 0.58;
   const foreLen = torsoH * 0.52;
   const footLen = h * 0.15;
   const footH = h * 0.042;
   const hipY = -legLen;
+  const coat = look.top === "coat";
+  const shortSleeve = look.top === "tshirt";
 
   const root = new Container();
 
   const makeLeg = (isFar: boolean): Leg => {
-    const pants = isFar ? far(look.bottomColor) : look.bottomColor;
-    const shoe = isFar ? far(look.shoeColor) : look.shoeColor;
+    const sh = (c: number) => (isFar ? far(c) : c);
     const hip = new Container();
     hip.position.set(isFar ? -1.5 : 1.5, hipY);
     const thigh = new Graphics()
       .roundRect(-legW / 2, -2, legW, thighLen + 4, legW / 2)
-      .fill({ color: pants });
+      .fill({ color: sh(look.bottomColor) });
     const knee = new Container();
     knee.y = thighLen;
     const shin = new Graphics()
       .roundRect(-legW * 0.45, -2, legW * 0.9, shinLen + 2, legW / 2)
-      .fill({ color: pants });
+      .fill({ color: sh(look.bareShins ? look.skin : look.bottomColor) });
     const foot = new Graphics()
       .roundRect(-footLen * 0.3, -footH, footLen, footH, footH / 2)
-      .fill({ color: shoe });
+      .fill({ color: sh(look.shoeColor) });
     foot.y = shinLen;
     knee.addChild(shin, foot);
     hip.addChild(thigh, knee);
@@ -98,19 +171,28 @@ export function buildPerson(look: PersonLook): Person {
   };
 
   const makeArm = (isFar: boolean): Arm => {
-    const sleeve = isFar ? far(look.topColor) : look.topColor;
-    const hand = isFar ? far(look.skin) : look.skin;
+    const sh = (c: number) => (isFar ? far(c) : c);
     const shoulder = new Container();
     shoulder.position.set(isFar ? -1 : 1, -torsoH + armW * 0.9);
-    const upper = new Graphics()
-      .roundRect(-armW / 2, -armW / 2, armW, upperLen + armW / 2, armW / 2)
-      .fill({ color: sleeve });
+    const upper = new Graphics();
+    if (shortSleeve) {
+      upper
+        .roundRect(-armW / 2, -armW / 2, armW, upperLen + armW / 2, armW / 2)
+        .fill({ color: sh(look.skin) });
+      upper
+        .roundRect(-armW / 2 - 0.5, -armW / 2, armW + 1, upperLen * 0.5, armW / 2)
+        .fill({ color: sh(look.topColor) });
+    } else {
+      upper
+        .roundRect(-armW / 2, -armW / 2, armW, upperLen + armW / 2, armW / 2)
+        .fill({ color: sh(look.topColor) });
+    }
     const elbow = new Container();
     elbow.y = upperLen;
     const fore = new Graphics()
       .roundRect(-armW * 0.42, -2, armW * 0.84, foreLen, armW / 2)
-      .fill({ color: sleeve });
-    fore.circle(0, foreLen, armW * 0.55).fill({ color: hand });
+      .fill({ color: sh(shortSleeve ? look.skin : look.topColor) });
+    fore.circle(0, foreLen, armW * 0.55).fill({ color: sh(look.skin) });
     elbow.addChild(fore);
     shoulder.addChild(upper, elbow);
     return { shoulder, elbow };
@@ -121,14 +203,62 @@ export function buildPerson(look: PersonLook): Person {
   const armFar = makeArm(true);
   const armNear = makeArm(false);
 
+  if (look.cane) {
+    // Walking cane held in the near hand, reaching the ground.
+    const handY = hipY + (-torsoH + armW * 0.9) + upperLen + foreLen;
+    const cane = new Graphics();
+    cane.roundRect(-1.1, 0, 2.2, -handY, 1).fill({ color: 0x6b4a2f });
+    cane.y = foreLen;
+    armNear.elbow.addChild(cane);
+  }
+
   // Body container holds torso, arms and head so the whole upper body can
   // bob and lean while the hips stay put.
   const body = new Container();
   body.y = hipY;
 
-  const torso = new Graphics()
-    .roundRect(-torsoW / 2, -torsoH, torsoW, torsoH + 3, torsoW * 0.32)
-    .fill({ color: look.topColor });
+  const torso = new Graphics();
+  if (look.top === "hoodie") {
+    // Hood resting on the back of the neck.
+    torso
+      .ellipse(-torsoW * 0.5, -torsoH + headR * 0.2, headR * 0.72, headR * 0.82)
+      .fill({ color: darker(look.topColor) });
+  }
+  if (coat) {
+    const drop = thighLen * 0.55;
+    torso
+      .roundRect(-torsoW / 2 - 1, -torsoH, torsoW + 2, torsoH + drop, torsoW * 0.28)
+      .fill({ color: look.topColor });
+    torso
+      .rect(-torsoW / 2 - 1, -2.5, torsoW + 2, 2.5)
+      .fill({ color: darker(look.topColor) });
+  } else {
+    torso
+      .roundRect(-torsoW / 2, -torsoH, torsoW, torsoH + 3, torsoW * 0.32)
+      .fill({ color: look.topColor });
+  }
+  if (look.top === "jacket") {
+    torso.rect(torsoW * 0.12, -torsoH + 2, 1.3, torsoH).fill({ color: darker(look.topColor) });
+  }
+
+  // Kid's backpack rides on the back (-x side).
+  const backpack = new Graphics();
+  if (look.backpack) {
+    backpack
+      .roundRect(-torsoW / 2 - h * 0.09, -torsoH + 2, h * 0.095, torsoH * 0.62, 3)
+      .fill({ color: pickBright(look) });
+  }
+
+  // Shoulder bag: strap across the torso, pouch at the hip.
+  const bag = new Graphics();
+  if (look.bag) {
+    const bagC = 0x4a3b2d;
+    bag
+      .moveTo(-torsoW * 0.1, -torsoH + 2)
+      .lineTo(torsoW * 0.55, -4)
+      .stroke({ width: 2, color: bagC, alpha: 0.9 });
+    bag.roundRect(torsoW * 0.35, -6, h * 0.1, h * 0.085, 2).fill({ color: bagC });
+  }
 
   const head = new Container();
   head.y = -torsoH + 1;
@@ -137,6 +267,16 @@ export function buildPerson(look: PersonLook): Person {
   const headG = new Graphics();
   // Hair behind the face (skull side).
   if (look.hairStyle !== "bald") {
+    if (look.hairStyle === "long") {
+      headG
+        .roundRect(-headR * 1.3, cy - headR * 0.5, headR * 1.15, headR * 2.6, headR * 0.5)
+        .fill({ color: look.hairColor });
+    }
+    if (look.hairStyle === "ponytail") {
+      headG
+        .roundRect(-headR * 1.35, cy - headR * 0.2, headR * 0.5, headR * 1.7, headR * 0.25)
+        .fill({ color: look.hairColor });
+    }
     headG
       .circle(-headR * 0.15, cy - headR * 0.1, headR * (look.hairStyle === "bob" ? 1.18 : 1.02))
       .fill({ color: look.hairColor });
@@ -145,6 +285,9 @@ export function buildPerson(look: PersonLook): Person {
         .roundRect(-headR * 1.3, cy - headR * 0.3, headR * 1.3, headR * 1.5, headR * 0.4)
         .fill({ color: look.hairColor });
     }
+    if (look.hairStyle === "bun") {
+      headG.circle(-headR * 0.95, cy - headR * 0.6, headR * 0.42).fill({ color: look.hairColor });
+    }
   }
   headG.rect(-headR * 0.35, -neckH - 2, headR * 0.7, neckH + 4).fill({ color: look.skin });
   headG.circle(0, cy, headR).fill({ color: look.skin });
@@ -152,21 +295,44 @@ export function buildPerson(look: PersonLook): Person {
   headG
     .poly([headR * 0.78, cy - headR * 0.1, headR * 1.12, cy + headR * 0.18, headR * 0.72, cy + headR * 0.34])
     .fill({ color: look.skin });
-  if (look.hairStyle !== "bald") {
+  if (look.hairStyle !== "bald" && look.hat !== "beanie") {
     // Fringe over the forehead.
     headG
       .ellipse(headR * 0.12, cy - headR * 0.78, headR * 0.52, headR * 0.32)
       .fill({ color: look.hairColor });
   }
+  if (look.hat === "cap") {
+    headG
+      .ellipse(-headR * 0.05, cy - headR * 0.55, headR * 1.04, headR * 0.6)
+      .fill({ color: look.hatColor });
+    headG
+      .roundRect(headR * 0.5, cy - headR * 0.68, headR * 1.0, headR * 0.24, 2)
+      .fill({ color: look.hatColor });
+  } else if (look.hat === "beanie") {
+    headG
+      .ellipse(0, cy - headR * 0.55, headR * 1.06, headR * 0.72)
+      .fill({ color: look.hatColor });
+    headG
+      .rect(-headR * 1.04, cy - headR * 0.5, headR * 2.08, headR * 0.3)
+      .fill({ color: darker(look.hatColor) });
+    if (kid) {
+      headG.circle(0, cy - headR * 1.3, headR * 0.28).fill({ color: 0xf0ece4 });
+    }
+  }
   head.addChild(headG);
 
-  body.addChild(armFar.shoulder, torso, head, armNear.shoulder);
-  root.addChild(legFar.hip, body, legNear.hip);
+  body.addChild(armFar.shoulder, backpack, torso, bag, head, armNear.shoulder);
+  // A coat covers both hips, so both legs go behind the body.
+  if (coat) root.addChild(legFar.hip, legNear.hip, body);
+  else root.addChild(legFar.hip, body, legNear.hip);
+
+  const elder = look.archetype === "elder";
+  const amp = elder ? 0.62 : 1;
 
   const animate = (phase: number, pace: number) => {
-    const hipA = 0.42 + 0.3 * pace;
-    const armA = 0.3 + 0.28 * pace;
-    const kneeA = 0.6 + 0.5 * pace;
+    const hipA = (0.42 + 0.3 * pace) * amp;
+    const armA = (0.3 + 0.28 * pace) * (elder ? 0.42 : 1);
+    const kneeA = (0.6 + 0.5 * pace) * amp;
 
     const poseLeg = (L: Leg, t: number) => {
       const thighRot = -hipA * Math.sin(t);
@@ -178,7 +344,7 @@ export function buildPerson(look: PersonLook): Person {
     };
     const poseArm = (A: Arm, t: number) => {
       A.shoulder.rotation = -armA * Math.sin(t);
-      A.elbow.rotation = -(0.25 + 0.4 * Math.max(0, Math.sin(t)));
+      A.elbow.rotation = -(0.25 + 0.5 * pace + 0.35 * Math.max(0, Math.sin(t)));
     };
 
     poseLeg(legNear, phase);
@@ -186,11 +352,16 @@ export function buildPerson(look: PersonLook): Person {
     poseArm(armNear, phase + Math.PI);
     poseArm(armFar, phase);
 
-    body.y = hipY - Math.abs(Math.sin(phase)) * (1.1 + pace * 1.5);
-    body.rotation = 0.05 + pace * 0.1;
-    head.rotation = -body.rotation * 0.55 + Math.sin(phase * 2) * 0.02;
+    body.y = hipY - Math.abs(Math.sin(phase)) * (1.1 + pace * 1.5) * amp;
+    body.rotation = (elder ? 0.16 : 0.05) + pace * 0.1;
+    head.rotation = -body.rotation * 0.55 + (elder ? 0.07 : 0) + Math.sin(phase * 2) * 0.02;
   };
 
   animate(0, 0);
-  return { view: root, animate };
+  return { view: root, look, animate };
+}
+
+/** Stable bright accent colour derived from the look itself. */
+function pickBright(look: PersonLook): number {
+  return BRIGHT[(look.height * 7 + look.topColor) % BRIGHT.length | 0];
 }

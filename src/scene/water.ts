@@ -35,6 +35,8 @@ const FRAG = /* glsl */ `
   out vec4 finalColor;
 
   uniform float uTime;
+  uniform float uWaveT;  // wave phase, integrated on the CPU
+  uniform float uScroll; // wind drift, integrated on the CPU
   uniform float uHorizon;
   uniform float uBottom;
   uniform float uWorldW;
@@ -66,11 +68,12 @@ const FRAG = /* glsl */ `
     float t01 = clamp((y - uHorizon) / (uBottom - uHorizon), 0.0, 1.0);
 
     // Waves: two octaves of scrolling noise, compressed toward the horizon
-    // for perspective, driven along x by the wind.
+    // for perspective, driven along x by the wind. Phases arrive integrated
+    // from the CPU — multiplying absolute time by a changing wind factor
+    // would make the shimmer race whenever the weather shifts the wind.
     float stretch = mix(0.55, 0.16, t01);
-    float wT = uTime * (0.25 + abs(uWind) * 0.9);
-    vec2 p1 = vec2(x * 0.020 - uTime * uWind * 1.1, y * stretch * 0.55 - wT * 0.7);
-    vec2 p2 = vec2(x * 0.055 + uTime * uWind * 1.9, y * stretch * 1.25 + wT);
+    vec2 p1 = vec2(x * 0.020 - uScroll * 1.1, y * stretch * 0.55 - uWaveT * 0.7);
+    vec2 p2 = vec2(x * 0.055 + uScroll * 1.9, y * stretch * 1.25 + uWaveT);
     float n = noise(p1) * 0.65 + noise(p2) * 0.35;
 
     // Sky reflection: low sky at the horizon, higher sky toward the viewer,
@@ -145,6 +148,8 @@ export function createWater(
       resources: {
         water: {
           uTime: { value: 0, type: "f32" },
+          uWaveT: { value: 0, type: "f32" },
+          uScroll: { value: 0, type: "f32" },
           uHorizon: { value: horizonY, type: "f32" },
           uBottom: { value: BOTTOM, type: "f32" },
           uWorldW: { value: W, type: "f32" },
@@ -172,10 +177,17 @@ export function createWater(
   }
 
   let t = 0;
+  let waveT = 0;
+  let scroll = 0;
   let lastBase = -1;
 
   const update = (dtMs: number, L: Lighting, w: WeatherState) => {
-    t += Math.min(dtMs / 1000, 0.1);
+    const dt = Math.min(dtMs / 1000, 0.1);
+    t += dt;
+    // Integrate wind-dependent phases so a changing wind alters the speed
+    // from now on instead of rescaling the whole elapsed timeline.
+    waveT += dt * (0.25 + Math.abs(w.wind) * 0.9);
+    scroll += dt * w.wind;
 
     // Base colour follows the sky, darkened with the grade so it never greys.
     const dark = clamp01(L.gradeAlpha * 1.6);
@@ -202,6 +214,8 @@ export function createWater(
       (1 - w.cloud * 0.85);
 
     uniforms.uTime = t;
+    uniforms.uWaveT = waveT;
+    uniforms.uScroll = scroll;
     (uniforms.uCel as Float32Array)[0] = L.celestialX;
     (uniforms.uCel as Float32Array)[1] = glow;
     uniforms.uWind = w.wind;

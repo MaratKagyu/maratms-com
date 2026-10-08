@@ -201,7 +201,8 @@ export function buildScene(app: Application, env: Environment): Scene {
   root.addChild(lampGlow);
 
   // --- The campsite: tent, fire pit and campers (see camp.ts) ---
-  const CAMP = { x: 560, y: 866 };
+  // On the upper meadow, between the conifer and the birch, above the path.
+  const CAMP = { x: 800, y: 690 };
   const camp = createCamp(lerp(0.55, 1.2, clamp01((CAMP.y - 620) / (860 - 620))));
   camp.view.position.set(CAMP.x, CAMP.y);
   camp.view.zIndex = CAMP.y;

@@ -28,6 +28,14 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   shadowed underside and sunlit caps, plus thin high wisps; each layer is
   tinted by the time of day (white at noon, cream-and-rose at the golden
   hours, moonlit slate at night).
+- Seeded trees in three species (`src/scene/trees.ts`): birches, columnar
+  poplars and tiered conifers. Tapered leaning trunks with root flare, bark
+  marks/fissures, knots and a shaded side; canopies of layered leaf clumps
+  (shadow/body/sunlit caps) that turn colour clump-by-clump and fall off
+  gradually through autumn; recursive winter branch skeletons with snow on
+  the twig tips; conifers stay green and collect snow per tier. Soft ground
+  shadows under trees and benches, autumn leaf carpets, and leaves drifting
+  down from the canopies on the wind. Wind now sways crowns, not trunks.
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
-import { makeBirch, makeBench } from "./entities";
+import { makeBench } from "./entities";
+import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
 import { createAgents, type BenchSpot } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
@@ -94,38 +95,43 @@ export function buildScene(app: Application, env: Environment): Scene {
   entities.sortableChildren = true;
   root.addChild(entities);
 
-  const placements: { x: number; y: number; kind: "birch" | "bench" }[] = [
+  const placements: { x: number; y: number; kind: TreeSpecies | "bench" }[] = [
+    { x: 60, y: 770, kind: "poplar" },
     { x: 180, y: 690, kind: "birch" },
     { x: 360, y: 800, kind: "bench" },
-    { x: 520, y: 640, kind: "birch" },
+    { x: 520, y: 640, kind: "poplar" },
+    { x: 680, y: 615, kind: "conifer" },
     { x: 720, y: 770, kind: "bench" },
     { x: 900, y: 700, kind: "birch" },
     { x: 1080, y: 850, kind: "bench" },
-    { x: 1180, y: 660, kind: "birch" },
+    { x: 1180, y: 660, kind: "conifer" },
     { x: 1360, y: 800, kind: "birch" },
     { x: 1500, y: 730, kind: "bench" },
   ];
-  const birchSetters: ((s: SeasonState) => void)[] = [];
-  const birchViews: Container[] = [];
+  const trees: Tree[] = [];
+  const leafSpots: { x: number; y: number; scale: number }[] = [];
   const benchSpots: BenchSpot[] = [];
-  for (const pl of placements) {
+  placements.forEach((pl, i) => {
     const depth = clamp01((pl.y - 620) / (860 - 620));
     const scale = lerp(0.55, 1.2, depth);
     let node;
-    if (pl.kind === "birch") {
-      const birch = makeBirch(p, scale);
-      birchSetters.push(birch.setSeason);
-      birchViews.push(birch.view);
-      node = birch.view;
-    } else {
+    if (pl.kind === "bench") {
       node = makeBench(p, scale);
       benchSpots.push({ x: pl.x, y: pl.y, scale });
+    } else {
+      const tree = makeTree(i * 331 + 7, pl.kind, p, scale);
+      trees.push(tree);
+      if (pl.kind !== "conifer") leafSpots.push({ x: pl.x, y: pl.y, scale });
+      node = tree.view;
     }
     node.x = pl.x;
     node.y = pl.y;
     node.zIndex = pl.y; // nearer (lower on screen) draws on top
     entities.addChild(node);
-  }
+  });
+
+  const leafFall = createLeafFall(leafSpots);
+  root.addChild(leafFall.view);
 
   // --- Living agents: people & dogs on the path, ducks on the water ---
   const agents = createAgents(entities, waterLife, pathY, W, benchSpots);
@@ -196,7 +202,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     const s = computeSeason(5);
     daylight = s.daylight;
     drawGround(s);
-    for (const set of birchSetters) set(s);
+    for (const tree of trees) tree.setSeason(s, 5);
   }
 
   // Redraw the time-driven graphics only when the ~3-minute bucket changes;
@@ -210,11 +216,12 @@ export function buildScene(app: Application, env: Environment): Scene {
 
     agents.update(dtMs, { month, hour: timeOfDay, weather: w });
 
-    // Wind sways the birch canopies.
+    // Wind sways the crowns (the trunks stay put).
     windT += dtMs / 1000;
-    for (let i = 0; i < birchViews.length; i++) {
-      birchViews[i].rotation = w.wind * Math.sin(windT * 1.6 + i) * 0.05;
+    for (let i = 0; i < trees.length; i++) {
+      trees[i].sway(w.wind * Math.sin(windT * 1.6 + i) * 0.05);
     }
+    leafFall.update(dtMs, month, w.wind);
 
     const seasonBucket = Math.round(month * 8);
     if (seasonBucket !== lastSeasonBucket) {
@@ -222,7 +229,7 @@ export function buildScene(app: Application, env: Environment): Scene {
       const s = computeSeason(month);
       daylight = s.daylight;
       drawGround(s);
-      for (const set of birchSetters) set(s);
+      for (const tree of trees) tree.setSeason(s, month);
     }
 
     const L = computeLighting(timeOfDay, W, HORIZON_Y, daylight);

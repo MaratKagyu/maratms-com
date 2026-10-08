@@ -151,13 +151,28 @@ export function buildScene(app: Application, env: Environment): Scene {
   grade.alpha = 0;
   root.addChild(grade);
 
-  // Stars: fixed field, faded in/out via the layer alpha.
-  const stars = new Graphics();
-  for (let i = 0; i < 90; i++) {
-    const x = (i * 137.5) % W;
-    const y = ((i * 89.3) % (HORIZON_Y - 40)) + 12;
-    const r = 0.8 + (i % 3) * 0.5;
-    stars.circle(x, y, r).fill({ color: 0xffffff, alpha: 0.6 + (i % 4) * 0.1 });
+  // Stars: a random field (a lattice reads as a pattern) with a wide
+  // brightness spread, faint colour tints, and a slowly twinkling subset
+  // (atmospheric scintillation). Faded in/out via the layer alpha.
+  const stars = new Container();
+  const starsStatic = new Graphics();
+  const starsTwinkle = new Graphics();
+  stars.addChild(starsStatic, starsTwinkle);
+  const STAR_TINTS = [0xffffff, 0xffffff, 0xeaf0ff, 0xfff2da];
+  type Star = { x: number; y: number; r: number; a: number; color: number; speed: number; phase: number };
+  const twinklers: Star[] = [];
+  for (let i = 0; i < 130; i++) {
+    const x = Math.random() * W;
+    const y = 10 + Math.random() * (HORIZON_Y - 55);
+    const b = Math.pow(Math.random(), 2.2); // many dim stars, a few bright
+    const r = 0.5 + b * 1.4 + Math.random() * 0.3;
+    const a = 0.16 + b * 0.84;
+    const color = STAR_TINTS[Math.floor(Math.random() * STAR_TINTS.length)];
+    if (Math.random() < 0.32) {
+      twinklers.push({ x, y, r, a, color, speed: 0.4 + Math.random() * 1.1, phase: Math.random() * 6.28 });
+    } else {
+      starsStatic.circle(x, y, r).fill({ color, alpha: a });
+    }
   }
   stars.alpha = 0;
   root.addChild(stars);
@@ -260,6 +275,13 @@ export function buildScene(app: Application, env: Environment): Scene {
     grade.tint = total > 0 ? lerpColor(L.gradeColor, 0x404a58, cloudDim / total) : L.gradeColor;
     grade.alpha = total;
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
+    if (stars.alpha > 0.01) {
+      starsTwinkle.clear();
+      for (const st of twinklers) {
+        const tw = 0.55 + 0.45 * Math.sin(windT * st.speed + st.phase);
+        starsTwinkle.circle(st.x, st.y, st.r).fill({ color: st.color, alpha: st.a * tw });
+      }
+    }
   }
 
   function layout(screenW: number, screenH: number) {

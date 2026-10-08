@@ -14,7 +14,7 @@ import { mulberry32 } from "./rng";
  * `phase` freeze the walk cycle at a given radian value,
  * `pose` stand|sit (default: walking), `umbrella` 1 to raise umbrellas.
  */
-export function buildGallery(app: Application) {
+export function buildGallery(app: Application): () => void {
   const params = new URLSearchParams(window.location.search);
   const zoom = Number(params.get("zoom")) || 4;
   const pace = params.has("pace") ? Number(params.get("pace")) : 0.3;
@@ -56,7 +56,7 @@ export function buildGallery(app: Application) {
     row.x = (w - COUNT * 110 * row.scale.x) / 2;
   };
   layout();
-  window.addEventListener("resize", () => layout());
+  window.addEventListener("resize", layout);
 
   const paceOf = (i: number) => {
     const a = figures[i].look.archetype;
@@ -76,4 +76,6 @@ export function buildGallery(app: Application) {
       else figures[i].animate(p + i * 0.7, paceOf(i), umbrella);
     }
   });
+
+  return () => window.removeEventListener("resize", layout);
 }

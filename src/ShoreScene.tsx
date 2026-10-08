@@ -38,7 +38,7 @@ export default function ShoreScene() {
 
       // Dev-only character gallery; see src/scene/gallery.ts.
       if (new URLSearchParams(window.location.search).has("gallery")) {
-        buildGallery(instance);
+        detach = buildGallery(instance);
         return;
       }
 

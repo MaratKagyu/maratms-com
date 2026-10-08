@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBench } from "./entities";
+import { createGroundDetail } from "./ground";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
 import { createAgents, type BenchSpot } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
@@ -79,6 +80,10 @@ export function buildScene(app: Application, env: Environment): Scene {
     if (s.snow > 0.01) grass.poly(gPts).fill({ color: 0xffffff, alpha: s.snow * 0.85 });
   };
   root.addChild(grass);
+
+  // Meadow texture: tufts, tone patches, seasonal wildflowers.
+  const groundDetail = createGroundDetail(W, H, grassTopY, pathY);
+  root.addChild(groundDetail.view);
 
   // --- Path ribbon along the slope ---
   const path = new Graphics();
@@ -202,6 +207,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     const s = computeSeason(5);
     daylight = s.daylight;
     drawGround(s);
+    groundDetail.setSeason(s, 5);
     for (const tree of trees) tree.setSeason(s, 5);
   }
 
@@ -229,6 +235,7 @@ export function buildScene(app: Application, env: Environment): Scene {
       const s = computeSeason(month);
       daylight = s.daylight;
       drawGround(s);
+      groundDetail.setSeason(s, month);
       for (const tree of trees) tree.setSeason(s, month);
     }
 

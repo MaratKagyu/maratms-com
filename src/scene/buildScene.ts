@@ -152,8 +152,12 @@ export function buildScene(app: Application, env: Environment): Scene {
   root.addChild(stars);
 
   // Sun / moon: a single object, redrawn when the kind or colour changes.
+  // Masked to the sky so a low sun (and its glow) sinks behind the horizon
+  // instead of overlapping the water — the reflection path takes over there.
   const celestial = new Graphics();
-  root.addChild(celestial);
+  const skyMask = new Graphics().rect(0, 0, W, HORIZON_Y).fill({ color: 0xffffff });
+  celestial.mask = skyMask;
+  root.addChild(celestial, skyMask);
 
   const drawCelestial = (kind: "sun" | "moon", color: number) => {
     celestial.clear();

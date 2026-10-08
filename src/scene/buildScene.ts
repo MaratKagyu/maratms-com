@@ -33,6 +33,15 @@ export type Scene = {
 const HORIZON_Y = 380;
 const SAMPLE_STEP = 40;
 
+// Real lunar phase for today (0 = new, 0.5 = full), fixed per page load.
+// Measured from the new moon of 2000-01-06 18:14 UTC, synodic month 29.53 d.
+const MOON_PHASE = (() => {
+  const synodic = 29.53058867;
+  const epoch = Date.UTC(2000, 0, 6, 18, 14) / 86400000;
+  const p = ((Date.now() / 86400000 - epoch) / synodic) % 1;
+  return (p + 1) % 1;
+})();
+
 // Terrain profile (side elevation): the grass edge and the path gently slope
 // down to the right and wave a little, so the bank reads as a slope.
 const grassTopY = (x: number) => 560 + 30 * Math.sin(x / 300) + 60 * (x / WORLD.width);
@@ -208,10 +217,55 @@ export function buildScene(app: Application, env: Environment): Scene {
       }
       celestial.circle(0, 0, 55).fill({ color });
     } else {
-      celestial.circle(0, 0, 52).fill({ color: 0xdfe6ff, alpha: 0.2 });
-      celestial.circle(0, 0, 40).fill({ color });
-      celestial.circle(-12, -8, 7).fill({ color: 0x000000, alpha: 0.05 });
-      celestial.circle(11, 10, 5).fill({ color: 0x000000, alpha: 0.05 });
+      const r = 40;
+      // Layered halo, brightest right at the limb.
+      celestial.circle(0, 0, 74).fill({ color: 0xdfe6ff, alpha: 0.05 });
+      celestial.circle(0, 0, 57).fill({ color: 0xdfe6ff, alpha: 0.09 });
+      celestial.circle(0, 0, 45).fill({ color: 0xdfe6ff, alpha: 0.16 });
+      // Night side: a faint earthshine ghost so the disc always reads round.
+      celestial.circle(0, 0, r).fill({ color: 0x97a0bd, alpha: 0.2 });
+      // Lit side: today's real phase (kept at least a sliver of crescent),
+      // waxing moons lit on the right, waning on the left.
+      const f = Math.max(0.06, (1 - Math.cos(MOON_PHASE * Math.PI * 2)) / 2);
+      const s = MOON_PHASE < 0.5 ? 1 : -1;
+      if (f > 0.97) {
+        celestial.circle(0, 0, r).fill({ color });
+      } else {
+        const ax = s * r * (1 - 2 * f); // terminator apex
+        const c = 0.5523; // circle-from-bezier constant
+        celestial
+          .moveTo(0, -r)
+          .arc(0, 0, r, -Math.PI / 2, Math.PI / 2, s < 0)
+          .bezierCurveTo(ax * c, r, ax, r * c, ax, 0)
+          .bezierCurveTo(ax, -r * c, ax * c, -r, 0, -r)
+          .closePath()
+          .fill({ color });
+      }
+      // Maria — the familiar grey seas; faint enough on the night side to
+      // read as earthshine detail, so no clipping to the lit shape needed.
+      const seas: [number, number, number, number][] = [
+        [-14, -12, 11, 9], // Imbrium
+        [2, -15, 8, 6], // Serenitatis
+        [11, -6, 7, 6], // Tranquillitatis
+        [-21, 3, 7, 10], // Procellarum
+        [7, 5, 5, 4], // Nectaris
+      ];
+      for (const [mx, my, rx, ry] of seas) {
+        celestial.ellipse(mx, my, rx, ry).fill({ color: 0x5a6382, alpha: 0.11 });
+      }
+      // Craters: a shaded bowl with a touch of rim light.
+      const craters: [number, number, number][] = [
+        [-7, 15, 4.5], // Tycho
+        [17, -17, 3.2],
+        [-25, -5, 2.6],
+        [13, 17, 2.2],
+      ];
+      for (const [cx, cy, cr] of craters) {
+        celestial.circle(cx, cy, cr).fill({ color: 0x5a6382, alpha: 0.16 });
+        celestial
+          .circle(cx - cr * 0.25, cy - cr * 0.3, cr * 0.72)
+          .fill({ color: 0xffffff, alpha: 0.08 });
+      }
     }
   };
 

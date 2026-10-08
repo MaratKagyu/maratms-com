@@ -51,6 +51,10 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   gopher always makes it underground in time (with a puff of dirt),
   leaving the cat to sniff and paw at the empty hole. Gophers keep
   daytime hours and hibernate through the cold months.
+- A prettier moon: it now shows today's real lunar phase (waxing lit on
+  the right, waning on the left, never thinner than a sliver), with an
+  earthshine ghost on the night side, grey maria, rim-lit craters and a
+  layered halo.
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

@@ -6,10 +6,10 @@ import type { WeatherState } from "./weather";
 
 /**
  * A campsite on the meadow: an A-frame tent, a stone fire pit with two
- * sitting logs and a pair of campers. By day the campers idle around the
- * tent (under umbrellas if it rains). At night a flickering campfire
- * burns and they sit on the logs around it — unless it rains, in which
- * case the fire is out and everyone hides inside the tent.
+ * sitting logs and a pair of campers. The fire burns around the clock —
+ * rain included — and the campers sit on the logs beside it; when it
+ * rains they pull on hooded waterproof raincoats. The glow is subtle in
+ * daylight and comes into its own after dusk.
  */
 export type Camp = {
   view: Container;
@@ -63,13 +63,43 @@ export function createCamp(scale: number): Camp {
   }
   view.addChild(logs);
 
-  // --- Campers ---
-  const campers: { person: Person; home: number }[] = [];
+  // --- Campers, each with a hooded raincoat drawn over the sitting rig ---
+  const COAT_COLORS = [0xe6b53c, 0x3d7a68];
+  const makeRaincoat = (p: Person, color: number): Graphics => {
+    const h = p.look.height;
+    const headR = h * 0.1;
+    const hipY = -h * 0.47;
+    const torsoTop = hipY - h * 0.285 + 1;
+    const faceY = torsoTop - h * 0.03 - headR;
+    const g = new Graphics();
+    // Poncho cape over torso, arms and lap.
+    g.poly([
+      -h * 0.16, torsoTop - 2,
+      h * 0.16, torsoTop - 2,
+      h * 0.3, hipY + h * 0.08,
+      -h * 0.24, hipY + h * 0.08,
+    ]).fill({ color });
+    g.poly([
+      -h * 0.16, torsoTop - 2,
+      -h * 0.07, torsoTop - 2,
+      -h * 0.13, hipY + h * 0.08,
+      -h * 0.24, hipY + h * 0.08,
+    ]).fill({ color: 0x000000, alpha: 0.15 }); // shaded back
+    // Hood wrapped around the head, face peeking out.
+    g.circle(-headR * 0.25, faceY - headR * 0.08, headR * 1.38).fill({ color });
+    g.circle(headR * 0.18, faceY, headR * 0.92).fill({ color: p.look.skin });
+    g.circle(headR * 0.55, faceY - headR * 0.15, Math.max(0.55, headR * 0.12)).fill({ color: 0x1c1c20 });
+    g.alpha = 0;
+    p.view.addChild(g); // on top of the rig, flips with it
+    return g;
+  };
+
+  const campers: { person: Person; coat: Graphics; home: number }[] = [];
   for (let i = 0; i < 2; i++) {
     const look = randomLook(rng, 6, "adult");
     const person = buildPerson(look);
     view.addChild(person.view);
-    campers.push({ person, home: i });
+    campers.push({ person, coat: makeRaincoat(person, COAT_COLORS[i]), home: i });
   }
 
   // --- Fire: flame redrawn each frame, embers, glow on its own layer ---
@@ -89,77 +119,44 @@ export function createCamp(scale: number): Camp {
 
   const embers: Ember[] = [];
   let flameT = 0;
-  let fireK = 0; // eased fire intensity
-  let outK = 1; // eased camper presence
-  let seated = false; // current camper pose
+  const fireK = 1; // the fire burns around the clock, rain or shine
+  let coatK = 0; // eased raincoat visibility
   let idleT = 0;
   let first = true; // snap to the current state on the first frame
 
-  const place = () => {
-    for (const c of campers) {
-      const p = c.person;
-      const sc = 0.92;
-      if (seated) {
-        // On the logs, facing the fire.
-        const lx = c.home === 0 ? FIRE.x - 36 : FIRE.x + 36;
-        const dir = c.home === 0 ? 1 : -1;
-        p.view.x = lx;
-        p.view.y = -LOG_H + 10 + p.look.height * 0.47 * sc;
-        p.view.scale.set(dir * sc, sc);
-      } else {
-        // Idling by the tent.
-        const lx = c.home === 0 ? -46 : 36;
-        const dir = c.home === 0 ? 1 : -1;
-        p.view.x = lx;
-        p.view.y = 4;
-        p.view.scale.set(dir * sc, sc);
-      }
-    }
-  };
-  place();
+  // Campers sit on the logs, facing the fire.
+  for (const c of campers) {
+    const p = c.person;
+    const sc = 0.92;
+    const lx = c.home === 0 ? FIRE.x - 36 : FIRE.x + 36;
+    const dir = c.home === 0 ? 1 : -1;
+    p.view.x = lx;
+    p.view.y = -LOG_H + 10 + p.look.height * 0.47 * sc;
+    p.view.scale.set(dir * sc, sc);
+  }
 
   const update = (dtMs: number, L: Lighting, w: WeatherState) => {
     const dt = Math.min(dtMs / 1000, 0.1);
     flameT += dt;
     idleT += dt;
 
-    const night = L.starAlpha > 0.35;
-    const raining = w.kind === "rain" && w.intensity > 0.25;
-    const fireOn = night && !raining;
-    // At night in the rain everyone shelters inside the tent.
-    const campersOut = !night || fireOn;
+    const raining = w.kind === "rain" && w.intensity > 0.2;
 
-    // The scene can load mid-night: start fully developed, no fade-in.
+    // The scene can load mid-rain: start with the coats already on.
     if (first) {
       first = false;
-      fireK = fireOn ? 1 : 0;
-      outK = campersOut ? 1 : 0;
-      seated = night && fireOn;
-      place();
+      coatK = raining ? 1 : 0;
     }
-    fireK += ((fireOn ? 1 : 0) - fireK) * Math.min(1, 2.5 * dt);
-    outK += ((campersOut ? 1 : 0) - outK) * Math.min(1, 3 * dt);
-
-    // Swap poses while the campers are (nearly) faded out, or on day/night
-    // flips while they stay visible.
-    const wantSeated = night && fireOn;
-    if (wantSeated !== seated && (outK < 0.1 || Math.abs(outK - 1) < 0.05)) {
-      seated = wantSeated;
-      place();
-    }
+    coatK += ((raining ? 1 : 0) - coatK) * Math.min(1, 2.5 * dt);
 
     for (const c of campers) {
-      c.person.view.alpha = outK;
-      c.person.view.visible = outK > 0.03;
-      if (!c.person.view.visible) continue;
-      const t = idleT + c.home * 3.7;
-      if (seated) c.person.sit(t);
-      else c.person.stand(t, !night && raining);
+      c.coat.alpha = coatK;
+      c.person.sit(idleT + c.home * 3.7);
     }
 
     // Flame + embers.
     flame.clear();
-    if (fireK > 0.02) {
+    {
       const n =
         Math.sin(flameT * 9.3) * 0.5 + Math.sin(flameT * 23.7 + 1.3) * 0.3 + Math.sin(flameT * 5.1 + 4) * 0.2;
       const h = 17 * (1 + n * 0.16) * (0.5 + fireK * 0.5);
@@ -202,10 +199,11 @@ export function createCamp(scale: number): Camp {
       flame.circle(e.x, e.y, 0.9 * k + 0.3).fill({ color: 0xffb060, alpha: 0.9 * k * fireK });
     }
 
-    // Glow flicker.
+    // Glow flicker — subtle in daylight, strong once the sky darkens.
+    const nightK = 0.25 + 0.75 * Math.min(1, L.starAlpha * 1.5);
     const flick = 1 + Math.sin(flameT * 11.4) * 0.07 + Math.sin(flameT * 27.2) * 0.04;
-    glowHalo.alpha = 0.2 * fireK * flick;
-    glowPool.alpha = 0.12 * fireK * flick;
+    glowHalo.alpha = 0.2 * fireK * flick * nightK;
+    glowPool.alpha = 0.12 * fireK * flick * nightK;
   };
 
   return { view, glow, update };

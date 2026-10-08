@@ -58,11 +58,11 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   night grade, mossy boulders with winter snow caps, and a sawn stump.
   Gopher burrows keep clear of all of them.
 - A campsite (`src/scene/camp.ts`): an A-frame tent with a stone fire
-  pit and two sitting logs. By day the campers idle around the tent
-  (umbrellas up if it rains); at night a flickering campfire burns with
-  drifting embers and a warm glow that cuts through the darkness, and
-  the campers sit on the logs around it. On rainy nights the fire is
-  out and everyone shelters inside the tent.
+  pit and two sitting logs on the upper meadow. The campfire burns
+  around the clock, rain or shine — a layered flickering flame with
+  drifting embers and a warm glow that is subtle in daylight and cuts
+  through the darkness at night. The two campers sit on the logs beside
+  it, and when it rains they pull on hooded waterproof raincoats.
 - A prettier moon: it now shows today's real lunar phase (waxing lit on
   the right, waning on the left, never thinner than a sliver), with an
   earthshine ghost on the night side, grey maria, rim-lit craters and a

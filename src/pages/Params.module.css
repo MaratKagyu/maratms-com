@@ -1,0 +1,57 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wrap h2 {
+  font-size: 20px;
+  margin-top: 16px;
+}
+
+.wrap code {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(127, 127, 127, 0.16);
+  font-size: 0.9em;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.table th,
+.table td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  vertical-align: top;
+}
+
+.values {
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.examples {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.examples a:hover code {
+  background: rgba(127, 127, 127, 0.3);
+}
+
+.examples span {
+  opacity: 0.75;
+}

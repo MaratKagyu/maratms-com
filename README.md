@@ -24,7 +24,8 @@ procedural, season-biased **weather**. The park is populated by procedural
 characters (adults, kids, elders with canes, joggers, dogs on leashes) that
 enter and leave, pause, sit on benches and raise umbrellas in rain; their
 number follows the hour, weather and season. These URL query parameters
-override the simulation for development and preview — combine them freely:
+override the simulation for development and preview — combine them freely
+(the running app documents them too, with clickable examples, at `/params`):
 
 | Parameter | Values | Effect |
 |-----------|--------|--------|

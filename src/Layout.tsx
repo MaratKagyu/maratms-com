@@ -11,6 +11,9 @@ export default function Layout() {
         <NavLink to="/about" className={({ isActive }) => (isActive ? styles.active : "")}>
           About
         </NavLink>
+        <NavLink to="/params" className={({ isActive }) => (isActive ? styles.active : "")}>
+          Params
+        </NavLink>
       </nav>
       <main className={styles.main}>
         <Outlet />

@@ -292,7 +292,6 @@ export function createAgents(
     let f = 1;
     if (w.kind === "rain") f = lerp(1, 0.35, w.intensity);
     else if (w.kind === "snow") f = lerp(1, 0.55, w.intensity);
-    else if (w.kind === "fog") f = 0.75;
     else if (w.cloud > 0.5) f = 0.9;
     f *= 1 - coldness(ctx.month) * 0.35;
     return Math.round(base * f);

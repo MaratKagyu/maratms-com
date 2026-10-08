@@ -199,15 +199,13 @@ export function createWater(
     const lowSun = clamp01(1 - elevation * 1.15);
     const glow =
       (L.celestial === "moon" ? 0.35 + 0.55 * L.starAlpha : 0.18 + 0.7 * lowSun) *
-      (1 - w.cloud * 0.85) *
-      (1 - w.fog * 0.9);
+      (1 - w.cloud * 0.85);
 
     uniforms.uTime = t;
     (uniforms.uCel as Float32Array)[0] = L.celestialX;
     (uniforms.uCel as Float32Array)[1] = glow;
     uniforms.uWind = w.wind;
-    uniforms.uGlint =
-      clamp01(1 - L.gradeAlpha * 2.2) * (1 - w.cloud * 0.8) * (1 - w.fog);
+    uniforms.uGlint = clamp01(1 - L.gradeAlpha * 2.2) * (1 - w.cloud * 0.8);
   };
 
   return { update };

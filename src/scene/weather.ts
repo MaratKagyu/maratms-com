@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Container, Graphics, Text } from "pixi.js";
 
 export type WeatherKind = "clear" | "cloudy" | "rain" | "snow" | "fog";
 
@@ -101,9 +101,15 @@ export type WeatherView = { update: (s: WeatherState, dtMs: number) => void };
 /**
  * Weather visuals, added to `root` with explicit zIndex so they interleave with
  * the scene layers (clouds behind the darkening grade, precipitation above the
- * land, fog on top). Requires root.sortableChildren = true.
+ * land). Requires root.sortableChildren = true. Fog deliberately has no visual:
+ * it only raises a small screen-space notice, added to `hud` (untransformed).
  */
-export function createWeatherView(root: Container, W: number, H: number): WeatherView {
+export function createWeatherView(
+  root: Container,
+  hud: Container,
+  W: number,
+  H: number,
+): WeatherView {
   // --- Clouds ---
   const clouds = new Container();
   clouds.zIndex = 20;
@@ -148,14 +154,25 @@ export function createWeatherView(root: Container, W: number, H: number): Weathe
     phase: i,
   }));
 
-  // --- Fog ---
-  const fog = new Sprite(Texture.WHITE);
-  fog.width = W;
-  fog.height = H;
-  fog.tint = 0xcdd6de;
-  fog.alpha = 0;
-  fog.zIndex = 75;
-  root.addChild(fog);
+  // --- Fog notice (fog itself is intentionally not rendered) ---
+  const fogNote = new Container();
+  const fogText = new Text({
+    text: "Fog is not implemented yet",
+    style: {
+      fontFamily:
+        "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+      fontSize: 13,
+      fill: 0xf2f5f8,
+    },
+  });
+  fogText.position.set(10, 5);
+  const fogBg = new Graphics()
+    .roundRect(0, 0, fogText.width + 20, fogText.height + 10, 8)
+    .fill({ color: 0x10141c, alpha: 0.45 });
+  fogNote.addChild(fogBg, fogText);
+  fogNote.position.set(12, 10);
+  fogNote.alpha = 0;
+  hud.addChild(fogNote);
 
   const update = (s: WeatherState, dtMs: number) => {
     const dt = dtMs / 1000;
@@ -167,7 +184,7 @@ export function createWeatherView(root: Container, W: number, H: number): Weathe
       else if (c.g.x < -320) c.g.x = W + 320;
     }
 
-    fog.alpha = s.fog * 0.55;
+    fogNote.alpha = s.fog > 0.25 ? Math.min(1, (s.fog - 0.25) / 0.3) * 0.9 : 0;
 
     precip.clear();
     const active = s.kind === "rain" || s.kind === "snow";

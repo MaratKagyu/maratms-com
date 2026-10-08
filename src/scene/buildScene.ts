@@ -187,7 +187,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   stars.zIndex = 80;
 
   const weather = createWeather();
-  const weatherView = createWeatherView(root, W, H);
+  const weatherView = createWeatherView(root, app.stage, W, H);
 
   // Draw the initial season so the ground and canopies exist from frame 0.
   let daylight = 0;

@@ -28,6 +28,9 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
 
 ### Changed
 - Forced `?weather=X` now starts fully developed instead of fading in.
+- Fog no longer renders at all (the old veil looked poor); the weather state
+  keeps a fog condition, but on screen it only shows a small corner notice —
+  "Fog is not implemented yet".
 
 ## 2026-07-24 — Migrated from Next.js to React + Vite
 

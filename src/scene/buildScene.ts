@@ -6,6 +6,7 @@ import { createGroundDetail } from "./ground";
 import { createMeteors } from "./meteors";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
 import { createAgents, type BenchSpot } from "./agents";
+import { createCritters } from "./critters";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
 import { computeSeason, type SeasonState } from "./season";
@@ -142,6 +143,15 @@ export function buildScene(app: Application, env: Environment): Scene {
   // --- Living agents: people & dogs on the path, ducks on the water ---
   const agents = createAgents(entities, waterLife, pathY, W, benchSpots);
 
+  // --- Small wildlife: the cat and the gopher ---
+  const critters = createCritters(
+    entities,
+    W,
+    grassTopY,
+    pathY,
+    placements.map(({ x, y }) => ({ x, y })),
+  );
+
   // --- Time-of-day overlays (above the static scene) ---
 
   // Full-scene tint: darkens at night, warms at golden hour.
@@ -241,6 +251,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     const w = weather.sample(month, dtMs);
 
     agents.update(dtMs, { month, hour: timeOfDay, weather: w });
+    critters.update(dtMs, { month, hour: timeOfDay, weather: w });
 
     // Wind sways the crowns (the trunks stay put).
     windT += dtMs / 1000;

@@ -41,6 +41,16 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   bolides with a terminal flash and a lingering afterglow; by day only an
   occasional faint pale streak. Clouds suppress them. `?meteors=N`
   multiplies the frequency for a meteor-shower preview.
+- Small wildlife (`src/scene/critters.ts`): a single cat — noticeably
+  smaller than the dogs — prowls the meadow day and night, pauses, flicks
+  its tail and retreats only from heavy rain; a colony of gophers (one to
+  five, scaled to how much world the viewport shows) dig burrows at random
+  spots (the dirt mound grows before anything shows), periscope out,
+  nibble grass for long stretches and dive back. If one surfaces in the
+  cat's field of view the cat drops into a stalk and dashes — but the
+  gopher always makes it underground in time (with a puff of dirt),
+  leaving the cat to sniff and paw at the empty hole. Gophers keep
+  daytime hours and hibernate through the cold months.
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

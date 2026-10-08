@@ -23,7 +23,10 @@ default it follows the real local **time of day**, **date/season** and a
 procedural, season-biased **weather**. The park is populated by procedural
 characters (adults, kids, elders with canes, joggers, dogs on leashes) that
 enter and leave, pause, sit on benches and raise umbrellas in rain; their
-number follows the hour, weather and season. These URL query parameters
+number follows the hour, weather and season. A lone cat prowls the meadow
+and hunts the gophers (one to five, depending on how wide the screen is),
+which pop out of freshly dug burrows now and then — and always dive back
+in time. These URL query parameters
 override the simulation for development and preview — combine them freely
 (the running app documents them too, with clickable examples, at `/params`):
 

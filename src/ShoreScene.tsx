@@ -25,6 +25,8 @@ export default function ShoreScene() {
         background: 0x0a0a12,
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
+        // The water shader ships GLSL only; keep Pixi off the WebGPU path.
+        preference: "webgl",
       });
 
       // Effect was cleaned up while init() was still running (StrictMode).

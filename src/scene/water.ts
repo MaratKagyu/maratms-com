@@ -1,32 +1,118 @@
-import { Container, Graphics } from "pixi.js";
-import { clamp01, lerp, lerpColor } from "./color";
+import { Container, Geometry, Graphics, Mesh, Shader } from "pixi.js";
+import { clamp01, lerpColor } from "./color";
 import type { Lighting } from "./lighting";
 import type { WeatherState } from "./weather";
 
 /**
- * Living water: the sea base recoloured by the sky, drifting ripple bands,
- * twinkling sparkles, rain rings and a shimmering reflection path under the
- * sun / moon that widens toward the shore and wobbles with the waves.
- * Everything is flat-vector, redrawn into a single Graphics per frame.
+ * Living water, shaded per-pixel by a fragment shader (GLSL — the app forces
+ * the WebGL renderer): a sky reflection that deepens toward the shore,
+ * posterized wave shimmer driven by wind, a glinting sun/moon specular path
+ * with wave wobble, daytime sparkles, a foam line along the grass edge.
+ * The shore silhouette is computed analytically in the shader, so the mesh
+ * is just one quad. A flat polygon stays underneath as a safety backdrop.
  */
 export type Water = {
   update: (dtMs: number, L: Lighting, w: WeatherState) => void;
 };
 
-type Row = {
-  y: number;
-  /** [startX, endX] runs of open water on this row (the shore cuts in). */
-  runs: [number, number][];
-  drift: number;
-  speed: number;
-  dashLen: number;
-  gap: number;
-  alpha: number;
+const VERT = /* glsl */ `
+  in vec2 aPosition;
+  out vec2 vPos;
+
+  uniform mat3 uProjectionMatrix;
+  uniform mat3 uWorldTransformMatrix;
+  uniform mat3 uTransformMatrix;
+
+  void main() {
+    mat3 mvp = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix;
+    gl_Position = vec4((mvp * vec3(aPosition, 1.0)).xy, 0.0, 1.0);
+    vPos = aPosition;
+  }
+`;
+
+const FRAG = /* glsl */ `
+  in vec2 vPos;
+  out vec4 finalColor;
+
+  uniform float uTime;
+  uniform float uHorizon;
+  uniform float uBottom;
+  uniform float uWorldW;
+  uniform vec3 uSeaCol;
+  uniform vec3 uSkyTop;
+  uniform vec3 uSkyBottom;
+  uniform vec3 uCelCol;
+  uniform vec2 uCel;    // x: celestial world x, y: path glow 0..1
+  uniform float uWind;  // -1..1
+  uniform float uGlint; // sparkle strength 0..1
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
+
+  void main() {
+    float x = vPos.x;
+    float y = vPos.y;
+    float shore = 560.0 + 30.0 * sin(x / 300.0) + 60.0 * (x / uWorldW);
+    float edge = shore - y;          // px above the grass line
+    if (edge < 0.0) discard;
+    float t01 = clamp((y - uHorizon) / (uBottom - uHorizon), 0.0, 1.0);
+
+    // Waves: two octaves of scrolling noise, compressed toward the horizon
+    // for perspective, driven along x by the wind.
+    float stretch = mix(0.55, 0.16, t01);
+    float wT = uTime * (0.25 + abs(uWind) * 0.9);
+    vec2 p1 = vec2(x * 0.020 - uTime * uWind * 1.1, y * stretch * 0.55 - wT * 0.7);
+    vec2 p2 = vec2(x * 0.055 + uTime * uWind * 1.9, y * stretch * 1.25 + wT);
+    float n = noise(p1) * 0.65 + noise(p2) * 0.35;
+
+    // Sky reflection: low sky at the horizon, higher sky toward the viewer,
+    // broken up by the waves.
+    float refT = clamp(t01 * 0.85 + (n - 0.5) * 0.3, 0.0, 1.0);
+    vec3 col = mix(uSeaCol, mix(uSkyBottom, uSkyTop, refT), 0.30 - t01 * 0.12);
+
+    // Posterized shimmer: two hard tone steps read as flat-vector water.
+    float windK = 0.45 + 0.55 * abs(uWind);
+    vec3 lightCol = mix(col, vec3(1.0), 0.55);
+    col = mix(col, lightCol, (step(0.74, n) * 0.16 + step(0.87, n) * 0.14) * windK);
+    col *= 1.0 - step(n, 0.16) * 0.06; // shallow troughs
+
+    // Specular path under the sun / moon, wobbling with the waves and
+    // broken into glints; quantized to keep the toon look.
+    float spreadW = (9.0 + t01 * t01 * 130.0) * (1.0 + 0.35 * abs(uWind));
+    float wob = (noise(vec2(y * 0.11, uTime * 0.8)) - 0.5) * spreadW * 1.5;
+    float d = abs(x - uCel.x + wob);
+    float spec = exp(-(d * d) / (spreadW * spreadW) * 3.0);
+    spec *= smoothstep(0.30, 0.72, noise(vec2(x * 0.045, y * 0.5 - uTime * 1.2)) * 0.55 + n * 0.45);
+    spec *= uCel.y * (1.0 - t01 * 0.30);
+    spec = floor(spec * 3.0 + 0.5) / 3.0;
+    col = mix(col, uCelCol, clamp(spec, 0.0, 1.0) * 0.9);
+
+    // Scattered daytime sparkles.
+    float nz = noise(vec2(x * 0.7 + uTime * 0.55, y * 0.7 - uTime * 0.4));
+    col = mix(col, vec3(1.0), smoothstep(0.945, 0.995, nz) * uGlint * 0.7);
+
+    // Foam along the grass edge, and a bright hairline at the horizon.
+    float foam = smoothstep(7.0, 1.5, edge) * (0.5 + 0.5 * sin(uTime * 1.7 + x * 0.055));
+    col = mix(col, lightCol, foam * 0.3);
+    col = mix(col, mix(col, vec3(1.0), 0.4), smoothstep(3.0, 0.0, y - uHorizon) * 0.55);
+
+    finalColor = vec4(col, 1.0) * smoothstep(0.0, 1.5, edge);
+  }
+`;
+
+const toRGB = (hex: number, out: Float32Array) => {
+  out[0] = ((hex >> 16) & 0xff) / 255;
+  out[1] = ((hex >> 8) & 0xff) / 255;
+  out[2] = (hex & 0xff) / 255;
 };
-
-type Ring = { x: number; y: number; age: number; life: number; r: number };
-
-const MAX_RINGS = 22;
 
 export function createWater(
   root: Container,
@@ -38,211 +124,90 @@ export function createWater(
   view.zIndex = 30;
   root.addChild(view);
 
+  // Flat backdrop under the shader (also the fallback if it ever fails).
   const base = new Graphics();
-  const overlay = new Graphics();
-  view.addChild(base, overlay);
-
-  // The sea polygon: from the horizon down to the grass edge.
+  view.addChild(base);
   const SAMPLE = 40;
   const seaPts: number[] = [0, horizonY];
   for (let x = 0; x <= W; x += SAMPLE) seaPts.push(x, shoreY(x));
   seaPts.push(W, horizonY);
 
-  // Precompute ripple rows and where each row is actually water.
-  const rows: Row[] = [];
-  {
-    let y = horizonY + 10;
-    let i = 0;
-    while (y < 648) {
-      const runs: [number, number][] = [];
-      let start: number | null = null;
-      for (let x = 0; x <= W; x += 20) {
-        const open = shoreY(x) > y + 4;
-        if (open && start === null) start = x;
-        if ((!open || x >= W) && start !== null) {
-          if (x - start > 50) runs.push([start, Math.min(x, W)]);
-          start = null;
-        }
-      }
-      if (runs.length) {
-        const t = (y - horizonY) / (648 - horizonY);
-        rows.push({
-          y,
-          runs,
-          drift: (i * 137.5) % 400,
-          speed: (6 + t * 14) * (i % 2 ? 1 : -0.7),
-          dashLen: 26 + ((i * 53) % 40) + t * 30,
-          gap: 60 + ((i * 97) % 90),
-          alpha: 0.05 + 0.1 * Math.abs(Math.sin(i * 2.4)) + t * 0.04,
-        });
-      }
-      y += 9 + (y - horizonY) * 0.09;
-      i++;
-    }
+  const BOTTOM = 662;
+  const seaColArr = new Float32Array(3);
+  const skyTopArr = new Float32Array(3);
+  const skyBottomArr = new Float32Array(3);
+  const celColArr = new Float32Array(3);
+
+  let uniforms: Record<string, number | Float32Array> | null = null;
+  try {
+    const shader = Shader.from({
+      gl: { vertex: VERT, fragment: FRAG },
+      resources: {
+        water: {
+          uTime: { value: 0, type: "f32" },
+          uHorizon: { value: horizonY, type: "f32" },
+          uBottom: { value: BOTTOM, type: "f32" },
+          uWorldW: { value: W, type: "f32" },
+          uSeaCol: { value: seaColArr, type: "vec3<f32>" },
+          uSkyTop: { value: skyTopArr, type: "vec3<f32>" },
+          uSkyBottom: { value: skyBottomArr, type: "vec3<f32>" },
+          uCelCol: { value: celColArr, type: "vec3<f32>" },
+          uCel: { value: new Float32Array([0, 0]), type: "vec2<f32>" },
+          uWind: { value: 0, type: "f32" },
+          uGlint: { value: 0, type: "f32" },
+        },
+      },
+    });
+    const geometry = new Geometry({
+      attributes: {
+        aPosition: [0, horizonY, W, horizonY, W, BOTTOM, 0, BOTTOM],
+      },
+      indexBuffer: [0, 1, 2, 0, 2, 3],
+    });
+    view.addChild(new Mesh({ geometry, shader }));
+    uniforms = shader.resources.water.uniforms;
+  } catch (e) {
+    // Keep the flat backdrop; the scene stays functional without the shader.
+    console.warn("water shader unavailable", e);
   }
-
-  // Fixed sparkle field (position, twinkle phase/speed), masked to water.
-  const sparkles: { x: number; y: number; ph: number; sp: number; len: number }[] = [];
-  for (let i = 0; i < 64; i++) {
-    const x = (i * 211.7) % W;
-    const y = horizonY + 14 + ((i * 83.3) % (640 - horizonY - 14));
-    if (shoreY(x) > y + 6) {
-      sparkles.push({ x, y, ph: i * 1.73, sp: 0.9 + ((i * 7) % 10) / 6, len: 2 + ((i * 13) % 4) });
-    }
-  }
-
-  const rings: Ring[] = [];
-  let ringTimer = 0;
-
-  const waterRunAt = (y: number, x: number): [number, number] | null => {
-    // Nearest precomputed row for masking the glitter path.
-    let best: Row | null = null;
-    for (const r of rows) {
-      if (!best || Math.abs(r.y - y) < Math.abs(best.y - y)) best = r;
-    }
-    if (!best) return null;
-    for (const run of best.runs) {
-      if (x >= run[0] && x <= run[1]) return run;
-    }
-    return null;
-  };
 
   let t = 0;
   let lastBase = -1;
 
   const update = (dtMs: number, L: Lighting, w: WeatherState) => {
-    const dt = Math.min(dtMs / 1000, 0.1);
-    t += dt;
+    t += Math.min(dtMs / 1000, 0.1);
 
-    // --- Base colour follows the sky (dark at night, warm at sunset).
-    // Darken with the scene grade first so the blend never goes grey.
+    // Base colour follows the sky, darkened with the grade so it never greys.
     const dark = clamp01(L.gradeAlpha * 1.6);
     const seaCol = lerpColor(lerpColor(0x4f9ec4, 0x1f4260, dark), L.skyBottom, 0.2);
     if (seaCol !== lastBase) {
       lastBase = seaCol;
       base.clear();
       base.poly(seaPts).fill({ color: seaCol });
-      // A brighter hairline at the horizon gives the water depth.
-      base.rect(0, horizonY, W, 2).fill({
-        color: lerpColor(seaCol, 0xffffff, 0.35),
-        alpha: 0.6,
-      });
     }
+    if (!uniforms) return;
 
-    overlay.clear();
+    toRGB(seaCol, seaColArr);
+    toRGB(L.skyTop, skyTopArr);
+    toRGB(L.skyBottom, skyBottomArr);
+    toRGB(
+      L.celestial === "moon" ? 0xeef4ff : lerpColor(L.celestialColor, 0xffffff, 0.15),
+      celColArr,
+    );
 
-    const rippleCol = lerpColor(seaCol, 0xffffff, 0.42);
-    const windK = 0.4 + Math.abs(w.wind) * 1.4;
-
-    // --- Drifting ripple bands ---
-    for (const r of rows) {
-      r.drift += r.speed * windK * (w.wind < 0 && r.speed > 0 ? -1 : 1) * dt;
-      const period = r.dashLen + r.gap;
-      const breathe = 0.75 + 0.25 * Math.sin(t * 0.8 + r.y * 0.13);
-      for (const [x0, x1] of r.runs) {
-        const off = ((r.drift % period) + period) % period;
-        for (let x = x0 - period + off; x < x1; x += period) {
-          const s = Math.max(x, x0);
-          const e = Math.min(x + r.dashLen * breathe, x1);
-          if (e - s > 6) {
-            overlay
-              .rect(s, r.y, e - s, 1.6)
-              .fill({ color: rippleCol, alpha: r.alpha * (0.7 + 0.6 * Math.abs(w.wind)) });
-          }
-        }
-      }
-    }
-
-    // --- Sparkles (daytime glints, hidden by clouds and night) ---
-    const dayGlint = clamp01(1 - L.gradeAlpha * 2.2) * (1 - w.cloud * 0.8) * (1 - w.fog);
-    if (dayGlint > 0.03) {
-      for (const s of sparkles) {
-        const tw = Math.sin(t * s.sp + s.ph);
-        if (tw > 0.55) {
-          const a = Math.pow((tw - 0.55) / 0.45, 2) * 0.55 * dayGlint;
-          overlay.rect(s.x - s.len, s.y, s.len * 2, 1.4).fill({ color: 0xffffff, alpha: a });
-        }
-      }
-    }
-
-    // --- Reflection path under the sun / moon ---
-    const elevation = 1 - (L.celestialY - 40) / (horizonY - 70); // ~0 near horizon
+    const elevation = 1 - (L.celestialY - 40) / (horizonY - 70);
     const lowSun = clamp01(1 - elevation * 1.15);
     const glow =
-      (L.celestial === "moon"
-        ? 0.35 + 0.55 * L.starAlpha // brightest against a dark sky
-        : 0.18 + 0.7 * lowSun) * // golden path when the sun is low
+      (L.celestial === "moon" ? 0.35 + 0.55 * L.starAlpha : 0.18 + 0.7 * lowSun) *
       (1 - w.cloud * 0.85) *
       (1 - w.fog * 0.9);
-    if (glow > 0.02) {
-      const col =
-        L.celestial === "moon" ? 0xeef4ff : lerpColor(L.celestialColor, 0xffffff, 0.15);
-      let y = horizonY + 5;
-      let i = 0;
-      while (y < 640) {
-        const t01 = (y - horizonY) / (640 - horizonY);
-        const spread = 5 + t01 * t01 * 85;
-        const wob =
-          Math.sin(t * 1.6 + y * 0.33 + w.wind * 2.5) * spread * 0.55 +
-          Math.sin(t * 0.9 + y * 1.05) * spread * 0.25;
-        const halfW =
-          (6 + t01 * 42) *
-          (0.55 + 0.45 * Math.sin(t * 2.2 + y * 0.6 + i * 1.9)) *
-          lerp(0.7, 1.15, Math.abs(Math.sin(i * 3.7)));
-        const cx = L.celestialX + wob;
-        const run = waterRunAt(y, cx);
-        if (run) {
-          // Soft wide sheen behind the bright dash.
-          const ss = Math.max(cx - spread * 0.9, run[0]);
-          const se = Math.min(cx + spread * 0.9, run[1]);
-          if (se - ss > 2) {
-            overlay.rect(ss, y - 1, se - ss, 4).fill({ color: col, alpha: glow * 0.07 });
-          }
-          const s = Math.max(cx - halfW, run[0]);
-          const e = Math.min(cx + halfW, run[1]);
-          if (e - s > 2) {
-            const a =
-              glow * (1 - t01 * 0.35) * (0.5 + 0.5 * Math.abs(Math.sin(i * 2.1 + t * 1.1)));
-            overlay.rect(s, y, e - s, 2.4).fill({ color: col, alpha: a });
-          }
-        }
-        y += 6 + t01 * 14;
-        i++;
-      }
-    }
 
-    // --- Rain rings ---
-    if (w.kind === "rain" && w.intensity > 0.05) {
-      ringTimer -= dt;
-      if (ringTimer <= 0 && rings.length < MAX_RINGS) {
-        ringTimer = 0.09 / w.intensity;
-        const x = Math.random() * W;
-        const y = horizonY + 12 + Math.random() * (635 - horizonY - 12);
-        if (shoreY(x) > y + 6) {
-          rings.push({ x, y, age: 0, life: 0.9 + Math.random() * 0.7, r: 8 + Math.random() * 11 });
-        }
-      }
-    }
-    for (let i = rings.length - 1; i >= 0; i--) {
-      const ring = rings[i];
-      ring.age += dt;
-      const k = ring.age / ring.life;
-      if (k >= 1) {
-        rings.splice(i, 1);
-        continue;
-      }
-      const depth = 0.25 + 0.3 * clamp01((ring.y - horizonY) / (640 - horizonY));
-      const rr = ring.r * k + 1.5;
-      overlay
-        .ellipse(ring.x, ring.y, rr, rr * depth)
-        .stroke({ width: 1.6, color: 0xe8f2f8, alpha: 0.75 * (1 - k) });
-      if (k < 0.5) {
-        // A second, younger ripple inside the first.
-        overlay
-          .ellipse(ring.x, ring.y, rr * 0.45, rr * 0.45 * depth)
-          .stroke({ width: 1.2, color: 0xe8f2f8, alpha: 0.6 * (1 - k * 2) });
-      }
-    }
+    uniforms.uTime = t;
+    (uniforms.uCel as Float32Array)[0] = L.celestialX;
+    (uniforms.uCel as Float32Array)[1] = glow;
+    uniforms.uWind = w.wind;
+    uniforms.uGlint =
+      clamp01(1 - L.gradeAlpha * 2.2) * (1 - w.cloud * 0.8) * (1 - w.fog);
   };
 
   return { update };

@@ -18,11 +18,12 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
 - Dog variety: fur colours, floppy/pointy ears, tail poses, belly patches.
 - Soft contact shadows under walkers; cloud cover dims the whole scene; ducks
   fly off for the deepest winter weeks.
-- Living water (`src/scene/water.ts`): the sea colour follows the sky (deep
-  at night, warm at sunset), wind-driven drifting ripple bands, daytime
-  sparkle glints, rain rings, and a shimmering sun/moon reflection path that
-  widens toward the shore and wobbles with the waves; sitters can hold
-  umbrellas on benches.
+- Living water (`src/scene/water.ts`), shaded per-pixel by a GLSL fragment
+  shader on a single quad (the app pins Pixi to its WebGL renderer): the sea
+  colour follows the sky, waves are posterized scrolling noise driven by the
+  wind, the sun/moon casts a glinting reflection path that widens toward the
+  shore and wobbles with the waves, daytime sparkles, a foam line along the
+  grass edge; sitters can hold umbrellas on benches.
 - Dev character gallery at `/?gallery=1` (see README).
 
 ### Changed

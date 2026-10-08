@@ -2,7 +2,7 @@ import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import type { Environment } from "./environment";
 import { paletteFor } from "./palette";
 import { makeBirch, makeBench } from "./entities";
-import { createAgents } from "./agents";
+import { createAgents, type BenchSpot } from "./agents";
 import { clamp01, lerp, lerpColor } from "./color";
 import { computeLighting } from "./lighting";
 import { computeSeason, type SeasonState } from "./season";
@@ -115,6 +115,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   ];
   const birchSetters: ((s: SeasonState) => void)[] = [];
   const birchViews: Container[] = [];
+  const benchSpots: BenchSpot[] = [];
   for (const pl of placements) {
     const depth = clamp01((pl.y - 620) / (860 - 620));
     const scale = lerp(0.55, 1.2, depth);
@@ -126,6 +127,7 @@ export function buildScene(app: Application, env: Environment): Scene {
       node = birch.view;
     } else {
       node = makeBench(p, scale);
+      benchSpots.push({ x: pl.x, y: pl.y, scale });
     }
     node.x = pl.x;
     node.y = pl.y;
@@ -134,7 +136,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   }
 
   // --- Living agents: people & dogs on the path, ducks on the water ---
-  const agents = createAgents(entities, waterLife, pathY, W);
+  const agents = createAgents(entities, waterLife, pathY, W, benchSpots);
 
   // --- Time-of-day overlays (above the static scene) ---
 
@@ -209,10 +211,10 @@ export function buildScene(app: Application, env: Environment): Scene {
   let lastSeasonBucket = Number.NaN;
 
   function update(timeOfDay: number, month: number, dtMs: number) {
-    agents.update(dtMs, month);
-
     const w = weather.sample(month, dtMs);
     weatherView.update(w, dtMs);
+
+    agents.update(dtMs, { month, hour: timeOfDay, weather: w });
 
     // Wind sways the birch canopies.
     windT += dtMs / 1000;

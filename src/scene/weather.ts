@@ -55,11 +55,12 @@ export function createWeather(): WeatherController {
   const windParam = params.get("wind");
   const forcedWind = windParam !== null ? Number(windParam) : null;
 
-  const state: WeatherState = { kind: "clear", intensity: 0, cloud: 0.12, fog: 0, wind: 0.2 };
-  let target: WeatherState = {
+  // A forced condition starts fully developed so previews show it instantly.
+  const state: WeatherState = {
     ...targetFor(forcedKind ?? "clear"),
     wind: forcedWind ?? 0.2,
   };
+  let target: WeatherState = { ...state };
   let timer = 0;
   let nextChange = 6;
 

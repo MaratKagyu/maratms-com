@@ -11,7 +11,8 @@ import { mulberry32 } from "./rng";
  * random. Extra params: `n` figures (default 8 — fewer means larger),
  * `seed` reroll the outfits, `month` dress for a season (default 6 = July),
  * `zoom` extra magnification (default 4 = fit), `pace` 0..1 (default 0.3),
- * `phase` freeze the walk cycle at a given radian value.
+ * `phase` freeze the walk cycle at a given radian value,
+ * `pose` stand|sit (default: walking), `umbrella` 1 to raise umbrellas.
  */
 export function buildGallery(app: Application) {
   const params = new URLSearchParams(window.location.search);
@@ -62,10 +63,17 @@ export function buildGallery(app: Application) {
     return a === "jogger" ? 0.95 : a === "elder" ? 0.05 : a === "kid" ? 0.5 : pace;
   };
 
+  const pose = params.get("pose");
+  const umbrella = params.has("umbrella");
+
   let phase = 0;
   app.ticker.add((t) => {
     phase += (t.deltaMS / 1000) * (3.2 + pace * 2.5);
     const p = frozen ?? phase;
-    for (let i = 0; i < COUNT; i++) figures[i].animate(p + i * 0.7, paceOf(i));
+    for (let i = 0; i < COUNT; i++) {
+      if (pose === "sit") figures[i].sit(p * 0.3 + i);
+      else if (pose === "stand") figures[i].stand(p * 0.3 + i, umbrella);
+      else figures[i].animate(p + i * 0.7, paceOf(i), umbrella);
+    }
   });
 }

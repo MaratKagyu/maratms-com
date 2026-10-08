@@ -5,7 +5,8 @@ import { chance, pick, range, type Rng } from "./rng";
 /**
  * Procedural park visitor, drawn in side profile from flat-vector primitives.
  * The figure is rigged: two-segment legs (knee) and arms (elbow) with feet and
- * hands, so the walk cycle bends joints instead of swinging rectangles.
+ * hands, so poses bend joints instead of swinging rectangles. Besides the walk
+ * cycle it can stand idle, sit on a bench and hold an umbrella.
  *
  * Origin (0,0) is between the feet; the figure faces +x. Flip with scale.x.
  */
@@ -32,6 +33,7 @@ export type PersonLook = {
   shoeColor: number;
   hat: HatKind;
   hatColor: number;
+  umbrellaColor: number;
   bag: boolean;
   backpack: boolean;
   cane: boolean;
@@ -41,7 +43,12 @@ export type Person = {
   view: Container;
   look: PersonLook;
   /** Advance the walk cycle. `phase` in radians; `pace` 0 stroll .. 1 jog. */
-  animate: (phase: number, pace: number) => void;
+  animate: (phase: number, pace: number, umbrella?: boolean) => void;
+  /** Idle standing pose; `t` is time in seconds for subtle motion. */
+  stand: (t: number, umbrella?: boolean) => void;
+  /** Sitting pose (hips level with the origin minus leg length — place the
+   *  figure so its hips land on the seat; the feet dangle). */
+  sit: (t: number) => void;
 };
 
 const SKIN = [0xf2cfae, 0xf0c8a0, 0xe0aa80, 0xb98354, 0x8d5a33];
@@ -56,6 +63,7 @@ const PANTS = [0x394a5a, 0x44546a, 0x5a4636, 0x2f3e4d, 0x444444, 0x6b6456];
 const SHORTS = [0x2f3e4d, 0x444444, 0x8a3a3a, 0x3a6a8a];
 const SHOES = [0x33302c, 0x4a4440, 0x5a3b28, 0xe8e4dc];
 const BRIGHT = [0xd84b7a, 0x3fa0d0, 0x58b858, 0xe8a43a, 0x9a6ad8];
+const UMBRELLAS = [0x3a3a46, 0x6e2f38, 0x2f4a62, 0xd8a13a, 0x4a6a52, 0xb04a6a];
 const HAIRSTYLES: HairStyle[] = ["short", "bob", "long", "bun", "ponytail", "short", "bald"];
 
 /** 0 = midsummer .. 1 = midwinter, for dressing agents by month (0..12). */
@@ -115,6 +123,7 @@ export function randomLook(rng: Rng, month: number, forced?: Archetype): PersonL
     shoeColor: jogger ? SHOES[3] : pick(rng, SHOES),
     hat,
     hatColor: pick(rng, kid ? BRIGHT : [0x4a4a52, 0x8a3a3a, 0x3a5a7a, 0x5a5244]),
+    umbrellaColor: pick(rng, UMBRELLAS),
     bag: !kid && !jogger && chance(rng, 0.3),
     backpack: kid && chance(rng, 0.55),
     cane: elder && chance(rng, 0.65),
@@ -203,13 +212,33 @@ export function buildPerson(look: PersonLook): Person {
   const armFar = makeArm(true);
   const armNear = makeArm(false);
 
+  let cane: Graphics | null = null;
   if (look.cane) {
     // Walking cane held in the near hand, reaching the ground.
     const handY = hipY + (-torsoH + armW * 0.9) + upperLen + foreLen;
-    const cane = new Graphics();
+    cane = new Graphics();
     cane.roundRect(-1.1, 0, 2.2, -handY, 1).fill({ color: 0x6b4a2f });
     cane.y = foreLen;
     armNear.elbow.addChild(cane);
+  }
+
+  // Umbrella gripped by the near hand; shown on demand. The stick runs from
+  // the hand up past the head, where the canopy dome opens.
+  const stickLen = h * 0.46;
+  const uR = h * 0.3;
+  const umbrella = new Container();
+  {
+    const g = new Graphics();
+    g.roundRect(-0.9, -stickLen, 1.8, stickLen + h * 0.07, 1).fill({ color: 0x5a4a3a });
+    g.rect(-0.8, -stickLen - uR * 0.22, 1.6, uR * 0.25).fill({ color: 0x5a4a3a });
+    g.moveTo(-uR, -stickLen)
+      .arc(0, -stickLen, uR, Math.PI, Math.PI * 2)
+      .closePath()
+      .fill({ color: look.umbrellaColor });
+    umbrella.addChild(g);
+    umbrella.y = foreLen; // at the hand
+    umbrella.visible = false;
+    armNear.elbow.addChild(umbrella);
   }
 
   // Body container holds torso, arms and head so the whole upper body can
@@ -328,8 +357,22 @@ export function buildPerson(look: PersonLook): Person {
 
   const elder = look.archetype === "elder";
   const amp = elder ? 0.62 : 1;
+  const baseLean = elder ? 0.16 : 0.05;
 
-  const animate = (phase: number, pace: number) => {
+  // Grip pose for the near arm while the umbrella is up; the umbrella
+  // counter-rotates so its stick stays near-vertical.
+  const GRIP_SHOULDER = -0.55;
+  const GRIP_ELBOW = -1.25;
+
+  const setUmbrella = (on: boolean, t: number) => {
+    umbrella.visible = on;
+    if (!on) return;
+    armNear.shoulder.rotation = GRIP_SHOULDER;
+    armNear.elbow.rotation = GRIP_ELBOW;
+    umbrella.rotation = -(GRIP_SHOULDER + GRIP_ELBOW) + 0.06 + Math.sin(t * 1.3) * 0.03;
+  };
+
+  const animate = (phase: number, pace: number, withUmbrella = false) => {
     const hipA = (0.42 + 0.3 * pace) * amp;
     const armA = (0.3 + 0.28 * pace) * (elder ? 0.42 : 1);
     const kneeA = (0.6 + 0.5 * pace) * amp;
@@ -349,16 +392,57 @@ export function buildPerson(look: PersonLook): Person {
 
     poseLeg(legNear, phase);
     poseLeg(legFar, phase + Math.PI);
-    poseArm(armNear, phase + Math.PI);
     poseArm(armFar, phase);
+    if (!withUmbrella) poseArm(armNear, phase + Math.PI);
 
     body.y = hipY - Math.abs(Math.sin(phase)) * (1.1 + pace * 1.5) * amp;
-    body.rotation = (elder ? 0.16 : 0.05) + pace * 0.1;
+    body.rotation = baseLean + pace * 0.1;
     head.rotation = -body.rotation * 0.55 + (elder ? 0.07 : 0) + Math.sin(phase * 2) * 0.02;
+    if (cane) cane.visible = !withUmbrella;
+    setUmbrella(withUmbrella, phase);
+  };
+
+  const stand = (t: number, withUmbrella = false) => {
+    const poseLeg = (L: Leg, off: number) => {
+      L.hip.rotation = off;
+      L.knee.rotation = 0.05;
+      L.foot.rotation = -off;
+    };
+    poseLeg(legFar, -0.06);
+    poseLeg(legNear, 0.06);
+    armFar.shoulder.rotation = 0.08;
+    armFar.elbow.rotation = -0.18;
+    armNear.shoulder.rotation = -0.08;
+    armNear.elbow.rotation = -0.18;
+    body.y = hipY - 0.4 - Math.sin(t * 1.6) * 0.35; // breathing
+    body.rotation = baseLean * 0.7;
+    head.rotation = -body.rotation * 0.4 + (elder ? 0.07 : 0);
+    if (cane) cane.visible = !withUmbrella;
+    setUmbrella(withUmbrella, t);
+  };
+
+  const sit = (t: number) => {
+    const poseLeg = (L: Leg, off: number) => {
+      L.hip.rotation = -1.52 + off;
+      L.knee.rotation = 1.42;
+      L.foot.rotation = 0.12;
+    };
+    poseLeg(legFar, -0.05);
+    poseLeg(legNear, 0.06);
+    // Hands rest on the lap.
+    armFar.shoulder.rotation = -0.5;
+    armFar.elbow.rotation = -0.75;
+    armNear.shoulder.rotation = -0.5;
+    armNear.elbow.rotation = -0.75;
+    body.y = hipY - 0.2 - Math.sin(t * 1.6) * 0.3;
+    body.rotation = elder ? 0.1 : 0.02;
+    head.rotation = -body.rotation * 0.4 + (elder ? 0.05 : 0);
+    if (cane) cane.visible = false; // would float mid-air while seated
+    umbrella.visible = false;
   };
 
   animate(0, 0);
-  return { view: root, look, animate };
+  return { view: root, look, animate, stand, sit };
 }
 
 /** Stable bright accent colour derived from the look itself. */

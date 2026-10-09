@@ -4,6 +4,7 @@ import { paletteFor } from "./palette";
 import { makeBench } from "./entities";
 import { createGroundDetail } from "./ground";
 import { createCamp } from "./camp";
+import { createGhost } from "./ghost";
 import { makeBush, makeLamp, makeRock, makeStump, type Lamp, type SeasonalProp } from "./props";
 import { createMeteors } from "./meteors";
 import { createLeafFall, makeTree, type Tree, type TreeSpecies } from "./trees";
@@ -233,6 +234,9 @@ export function buildScene(app: Application, env: Environment): Scene {
     },
   );
 
+  // On deep nights the Grudge girl sometimes crawls along the path.
+  const ghost = createGhost(entities, W, pathY);
+
   // --- Time-of-day overlays (above the static scene) ---
 
   // Full-scene tint: darkens at night, warms at golden hour.
@@ -423,6 +427,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     const lampK = clamp01(L.starAlpha * 1.7);
     for (const lamp of lamps) lamp.setNight(lampK);
     camp.update(dtMs, L, w);
+    ghost.update(dtMs, L.starAlpha);
     stars.alpha = L.starAlpha * (1 - w.cloud * 0.85); // clouds hide the stars
     meteors.update(dtMs, L.starAlpha, w.cloud);
     if (stars.alpha > 0.01) {

@@ -13,7 +13,11 @@ import { clamp01, lerp } from "./color";
  * Hidden dev override: `?ghost=N` multiplies how often she comes
  * (N >= 30 summons her immediately).
  */
-export type Ghost = { update: (dtMs: number, starAlpha: number) => void };
+export type Ghost = {
+  update: (dtMs: number, starAlpha: number) => void;
+  /** Where she is right now, or null — passers-by flee at the sight. */
+  pos: () => { x: number; y: number } | null;
+};
 
 const depthScale = (y: number) => lerp(0.82, 1.08, clamp01((y - 720) / (840 - 720)));
 
@@ -73,6 +77,7 @@ export function createGhost(
 
   root.addChild(leg, armFar, body, armNear, head);
 
+  let curY = 0;
   let timer = (30 + Math.random() * 60) / freqMult;
   if (freqMult >= 30) timer = 0; // summoned: she is already here
   let active = false;
@@ -172,6 +177,7 @@ export function createGhost(
     }
 
     const y = pathY(Math.max(0, Math.min(worldW, x))) + yOff;
+    curY = y;
     const sc = depthScale(y);
     root.x = x;
     root.y = y;
@@ -179,5 +185,8 @@ export function createGhost(
     root.scale.set(dir * sc, sc);
   };
 
-  return { update };
+  return {
+    update,
+    pos: () => (active && vanishT < 0 ? { x, y: curY } : null),
+  };
 }

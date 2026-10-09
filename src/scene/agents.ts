@@ -10,7 +10,13 @@ import {
 import { chance, mulberry32, pick, range, type Rng } from "./rng";
 import type { WeatherState } from "./weather";
 
-export type AgentCtx = { month: number; hour: number; weather: WeatherState };
+export type AgentCtx = {
+  month: number;
+  hour: number;
+  weather: WeatherState;
+  /** Something on the path nobody wants to look at twice. */
+  threat?: { x: number; y: number } | null;
+};
 export type AgentSystem = { update: (dtMs: number, ctx: AgentCtx) => void };
 
 /** A bench the walkers can sit on (world coords of its base, and its scale). */
@@ -247,7 +253,7 @@ const SPEED_BY_ARCHETYPE: Record<Archetype, [number, number]> = {
 
 type Seat = { x: number; groundY: number; scale: number; taken: boolean };
 
-type NpcState = "walk" | "pause" | "toSeat" | "sit" | "leave";
+type NpcState = "walk" | "pause" | "toSeat" | "sit" | "leave" | "flee";
 
 type Dog = {
   view: Container;
@@ -465,6 +471,19 @@ export function createAgents(
     npc.stateT += dt;
     npc.idleT += dt;
 
+    // One look at *that* and anyone — walker or sitter — bolts the other way.
+    if (ctx.threat && npc.state !== "flee" && Math.abs(ctx.threat.x - npc.x) < 240) {
+      if (npc.seat) {
+        npc.seat.taken = false;
+        npc.seat = null;
+      }
+      npc.state = "flee";
+      npc.stateT = 0;
+      npc.dir = npc.x < ctx.threat.x ? -1 : 1;
+      npc.speed = Math.max(npc.speed, 50); // the startled jolt
+      npc.pace = npc.person.look.archetype === "elder" ? 0.5 : 1;
+    }
+
     // Umbrellas go up in real rain (joggers and kids tough it out).
     const a = npc.person.look.archetype;
     npc.umbrella =
@@ -549,6 +568,14 @@ export function createAgents(
       case "leave": {
         npc.dir = npc.x < worldW / 2 ? -1 : 1;
         npc.targetSpeed = npc.cruise;
+        npc.x += npc.dir * npc.speed * dt;
+        break;
+      }
+      case "flee": {
+        // Flat out away from the threat, all the way off the scene.
+        if (ctx.threat) npc.dir = npc.x < ctx.threat.x ? -1 : 1;
+        npc.targetSpeed =
+          a === "elder" ? 65 : a === "kid" ? 115 : a === "jogger" ? 170 : 140;
         npc.x += npc.dir * npc.speed * dt;
         break;
       }

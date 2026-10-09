@@ -73,7 +73,11 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   intervals with no easing; she freezes dead still, lurches, drags
   back half a step. Everyone nearby turns and runs flat out the other
   way (even off the benches); then she flickers out, with a parting
-  blip of static, and goes about her business.
+  blip of static, and goes about her business. The cat is the one
+  exception: it always senses her arrival, trots over from anywhere,
+  sits down at a polite distance and just watches her crawl,
+  tail-flicking, following if she moves off — unless it is raining,
+  in which case the campfire wins.
 - A prettier moon: it now shows today's real lunar phase (waxing lit on
   the right, waning on the left, never thinner than a sliver), with an
   earthshine ghost on the night side, grey maria, rim-lit craters and a

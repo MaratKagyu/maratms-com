@@ -15,7 +15,13 @@ import type { WeatherState } from "./weather";
  * stalk, closes in and dashes — but the gopher always makes it
  * underground in time, leaving the cat to sniff at an empty hole.
  */
-export type CritterCtx = { month: number; hour: number; weather: WeatherState };
+export type CritterCtx = {
+  month: number;
+  hour: number;
+  weather: WeatherState;
+  /** The night visitor, if she is out: the cat finds her interesting. */
+  ghost?: { x: number; y: number } | null;
+};
 export type Critters = { update: (dtMs: number, ctx: CritterCtx) => void };
 
 const depthScale = (y: number) => lerp(0.82, 1.08, clamp01((y - 720) / (840 - 720)));
@@ -151,6 +157,8 @@ type CatState =
   | "sniff"
   | "shelter" // running to the campfire out of the rain
   | "sitCamp" // sitting by the fire in a tiny rain cape
+  | "approachGhost" // trotting over for a closer look at the visitor
+  | "watchGhost" // sitting at a polite distance, watching her crawl
   | "leave"
   | "away";
 type BurrowState = "idle" | "grow" | "wait" | "peek" | "up" | "dive" | "linger" | "fade";
@@ -210,7 +218,8 @@ export function createCritters(
     targetSpeed: 26,
     phase: rng() * 6.28,
     crouch: 0,
-    sit: 0, // eased sitting pose (by the campfire)
+    sit: 0, // eased sitting pose (campfire or ghost-watching)
+    coatK: 0, // eased rain cape, campfire only
     idleT: rng() * 10,
     prey: null as GopherUnit | null,
   };
@@ -366,6 +375,7 @@ export function createCritters(
         cat.speed = 0;
         cat.targetSpeed = 0;
         cat.sit = 1;
+        cat.coatK = 1;
       }
     }
 
@@ -389,6 +399,22 @@ export function createCritters(
       cat.tx = shelter.x;
       cat.ty = shelter.y;
       cat.targetSpeed = 130;
+    }
+
+    // Cats always know when *she* arrives, from anywhere on the scene.
+    // Rain still outranks curiosity; the campfire keeps its cape rule.
+    if (
+      ctx.ghost &&
+      !rainForCat(w) &&
+      (cat.state === "prowl" ||
+        cat.state === "pause" ||
+        cat.state === "sniff" ||
+        cat.state === "stalk" ||
+        cat.state === "dash" ||
+        cat.state === "sitCamp")
+    ) {
+      cat.state = "approachGhost";
+      cat.prey = null;
     }
 
     // A surfaced gopher in front of the cat triggers the hunt.
@@ -492,6 +518,39 @@ export function createCritters(
         }
         break;
       }
+      case "approachGhost": {
+        const gh = ctx.ghost;
+        if (!gh) {
+          cat.state = "prowl";
+          pickCatTarget();
+          break;
+        }
+        // A close look, but not *that* close.
+        const side = cat.x >= gh.x ? 1 : -1;
+        cat.tx = gh.x + side * 72;
+        cat.ty = gh.y + 6;
+        cat.targetSpeed = 48;
+        if (Math.hypot(cat.x - gh.x, cat.y - gh.y) < 85) {
+          cat.state = "watchGhost";
+          cat.targetSpeed = 0;
+        }
+        break;
+      }
+      case "watchGhost": {
+        const gh = ctx.ghost;
+        if (!gh) {
+          // She is gone. Sit a beat longer, then wander off unbothered.
+          cat.state = "pause";
+          cat.stateT = 0;
+          cat.stateDur = range(rng, 2, 4.5);
+          break;
+        }
+        cat.dir = gh.x > cat.x ? 1 : -1; // the head follows her crawl
+        cat.tx = cat.x;
+        cat.ty = cat.y;
+        if (Math.hypot(cat.x - gh.x, cat.y - gh.y) > 130) cat.state = "approachGhost";
+        break;
+      }
       case "leave": {
         if (cat.x < -EDGE + 4 || cat.x > worldW + EDGE - 4) {
           cat.state = "away";
@@ -535,9 +594,11 @@ export function createCritters(
     const crouchTarget =
       cat.state === "stalk" ? 1 : cat.state === "dash" ? 0.35 : cat.state === "sniff" ? 0.6 : 0;
     cat.crouch += (crouchTarget - cat.crouch) * Math.min(1, 5 * dt);
-    const sitTarget = cat.state === "sitCamp" ? 1 : 0;
+    const sitTarget = cat.state === "sitCamp" || cat.state === "watchGhost" ? 1 : 0;
     cat.sit += (sitTarget - cat.sit) * Math.min(1, 4 * dt);
-    catBuild.coat.alpha = cat.sit; // the little rain cape goes on once seated
+    // The little rain cape belongs to the campfire only.
+    cat.coatK += ((cat.state === "sitCamp" ? 1 : 0) - cat.coatK) * Math.min(1, 4 * dt);
+    catBuild.coat.alpha = Math.min(cat.coatK, cat.sit);
 
     if (catBuild.root.visible) {
       cat.phase += dt * cat.speed * 0.16;
@@ -549,7 +610,9 @@ export function createCritters(
       catBuild.shadow.alpha = 0.18 - 0.11 * w.cloud;
       const walkK = clamp01(cat.speed / 26);
       const flick =
-        cat.state === "pause" || cat.state === "sitCamp" ? Math.sin(cat.idleT * 2.8) * 0.3 : 0;
+        cat.state === "pause" || cat.state === "sitCamp" || cat.state === "watchGhost"
+          ? Math.sin(cat.idleT * 2.8) * 0.3
+          : 0;
       const paw = cat.state === "sniff" ? Math.sin(cat.idleT * 9) * 0.45 : 0;
       catBuild.animate(cat.phase, walkK, cat.crouch, flick, paw, cat.sit);
     }

@@ -387,7 +387,7 @@ export function buildScene(app: Application, env: Environment): Scene {
     const w = weather.sample(month, dtMs);
 
     agents.update(dtMs, { month, hour: timeOfDay, weather: w, threat: ghost.pos() });
-    critters.update(dtMs, { month, hour: timeOfDay, weather: w });
+    critters.update(dtMs, { month, hour: timeOfDay, weather: w, ghost: ghost.pos() });
 
     // Wind sways the crowns (the trunks stay put).
     windT += dtMs / 1000;

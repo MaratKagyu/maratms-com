@@ -1,4 +1,4 @@
-import { Container, Graphics } from "pixi.js";
+import { Container, Graphics, NoiseFilter, Sprite, Texture } from "pixi.js";
 import { clamp01, lerp } from "./color";
 
 /**
@@ -24,7 +24,10 @@ const depthScale = (y: number) => lerp(0.82, 1.08, clamp01((y - 720) / (840 - 72
 export function createGhost(
   land: Container,
   worldW: number,
+  worldH: number,
   pathY: (x: number) => number,
+  /** Full-screen layer above everything, for the TV interference. */
+  fx: Container,
 ): Ghost {
   const freqMult = Math.max(
     0.1,
@@ -77,6 +80,21 @@ export function createGhost(
 
   root.addChild(leg, armFar, body, armNear, head);
 
+  // --- TV interference: analog snow with a rolling bar ---
+  const tvWrap = new Container();
+  const tv = new Sprite(Texture.WHITE);
+  tv.width = worldW;
+  tv.height = worldH;
+  tv.tint = 0x9aa0a8;
+  const noise = new NoiseFilter({ noise: 1 });
+  tv.filters = [noise];
+  const band = new Graphics();
+  band.rect(0, 0, worldW, 70).fill({ color: 0x000000, alpha: 0.3 });
+  band.rect(0, 70, worldW, 8).fill({ color: 0xffffff, alpha: 0.18 });
+  tvWrap.addChild(tv, band);
+  tvWrap.visible = false;
+  fx.addChild(tvWrap);
+
   let curY = 0;
   let timer = (30 + Math.random() * 60) / freqMult;
   if (freqMult >= 30) timer = 0; // summoned: she is already here
@@ -91,6 +109,8 @@ export function createGhost(
   let poseT = 0;
   let poseDur = 0.12;
   let freezeT = 0;
+  let preT = -1; // countdown of the interference burst before she arrives
+  let flickerT = 0;
 
   const snapPose = () => {
     // Hard cuts, no easing: wrong angles held for a ragged beat.
@@ -124,14 +144,36 @@ export function createGhost(
     timer = nextIn;
   };
 
+  /** Render the interference overlay; strength 0 hides it. */
+  const stepStatic = (dt: number, strength: number) => {
+    if (strength <= 0) {
+      tvWrap.visible = false;
+      return;
+    }
+    flickerT += dt;
+    // The signal cuts in and out at a broken rhythm.
+    const on = Math.sin(flickerT * 41) + Math.sin(flickerT * 15.7 + 2) > -0.4;
+    tvWrap.visible = on;
+    tv.alpha = (0.45 + Math.random() * 0.35) * strength;
+    noise.seed = Math.random();
+    band.y = ((flickerT * 640) % (worldH + 160)) - 80;
+  };
+
   const update = (dtMs: number, starAlpha: number) => {
     const dt = Math.min(dtMs / 1000, 0.1);
+
+    if (preT >= 0) preT -= dt;
+    // Full-strength snow announces her; a weaker blip sees her off.
+    const vanishK = active && vanishT >= 0 && vanishT < 0.35 ? 0.6 : 0;
+    stepStatic(dt, Math.max(preT > 0 ? 1 : 0, vanishK));
 
     if (!active) {
       if (starAlpha > 0.7) {
         timer -= dt;
-        if (timer <= 0) spawn(); // falls through: she is placed this same frame
+        // The TV goes bad first; she is there when the snow clears.
+        if (timer <= 0 && preT < 0) preT = 1.15;
       }
+      if (preT >= 0 && preT <= 0.3) spawn(); // falls through: placed this frame
       if (!active) return;
     }
 

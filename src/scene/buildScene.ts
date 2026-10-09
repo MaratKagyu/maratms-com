@@ -234,8 +234,11 @@ export function buildScene(app: Application, env: Environment): Scene {
     },
   );
 
-  // On deep nights the Grudge girl sometimes crawls along the path.
-  const ghost = createGhost(entities, W, pathY);
+  // On deep nights the Grudge girl sometimes crawls along the path,
+  // announced by a burst of full-screen TV interference.
+  const ghostFx = new Container();
+  root.addChild(ghostFx);
+  const ghost = createGhost(entities, W, H, pathY, ghostFx);
 
   // --- Time-of-day overlays (above the static scene) ---
 
@@ -357,6 +360,7 @@ export function buildScene(app: Application, env: Environment): Scene {
   lampGlow.zIndex = 71; // lamp light is not dimmed by the night grade
   celestial.zIndex = 72; // above the grade so sun/moon stay bright at night
   stars.zIndex = 80;
+  ghostFx.zIndex = 95; // the TV interference covers everything
 
   const weather = createWeather();
   const weatherView = createWeatherView(root, app.stage, W, H);

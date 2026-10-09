@@ -67,10 +67,13 @@ no-asset approach (everything is still drawn from Pixi primitives in code).
   upright beside the campers in a tiny hooded rain cape of its own,
   tail-flicking at the flames until the rain lets up.
 - A visitor (`src/scene/ghost.ts`): on deep nights, once in a long
-  while, the Grudge girl appears out of nowhere in the middle of the
-  path and crawls along it — poses snap at ragged intervals with no
-  easing, she freezes dead still, lurches, drags back half a step —
-  then flickers out and goes about her business. Nobody reacts.
+  while, the screen fills with flickering TV interference — analog
+  snow with a rolling bar — and when the signal clears the Grudge girl
+  is crawling along the middle of the path. Poses snap at ragged
+  intervals with no easing; she freezes dead still, lurches, drags
+  back half a step. Everyone nearby turns and runs flat out the other
+  way (even off the benches); then she flickers out, with a parting
+  blip of static, and goes about her business.
 - A prettier moon: it now shows today's real lunar phase (waxing lit on
   the right, waning on the left, never thinner than a sliver), with an
   earthshine ghost on the night side, grey maria, rim-lit craters and a

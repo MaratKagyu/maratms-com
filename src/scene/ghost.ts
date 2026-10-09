@@ -96,7 +96,9 @@ export function createGhost(
   fx.addChild(tvWrap);
 
   let curY = 0;
-  let timer = (30 + Math.random() * 60) / freqMult;
+  // She is a rare sight: the first visit after 5-15 minutes of deep
+  // night, later ones 20-60 minutes apart.
+  let timer = (300 + Math.random() * 600) / freqMult;
   if (freqMult >= 30) timer = 0; // summoned: she is already here
   let active = false;
   let x = 0;
@@ -189,7 +191,7 @@ export function createGhost(
       vanishT += dt;
       // A broken flicker, then gone.
       root.alpha = vanishT < 0.35 ? (Math.sin(vanishT * 70) > 0 ? 0.85 : 0.1) : 0;
-      if (vanishT >= 0.45) despawn((120 + Math.random() * 240) / freqMult);
+      if (vanishT >= 0.45) despawn((1200 + Math.random() * 2400) / freqMult);
       return;
     }
 
